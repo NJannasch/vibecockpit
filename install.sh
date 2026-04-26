@@ -94,6 +94,11 @@ main() {
   download "$url" "$dest"
   chmod +x "$dest"
 
+  # Remove macOS quarantine flag (prevents Gatekeeper "malware" warning)
+  if [ "$os" = "darwin" ]; then
+    xattr -d com.apple.quarantine "$dest" 2>/dev/null || true
+  fi
+
   ok "Installed ${version} to ${dest}"
 
   # Check PATH

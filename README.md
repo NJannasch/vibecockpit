@@ -76,6 +76,9 @@ curl -fsSL https://raw.githubusercontent.com/njannasch/vibecockpit/main/install.
 
 To **update**, run the same command — the installer detects your existing version and upgrades in place.
 
+> **macOS note:** If you download a binary manually (not via the install script), macOS may show a Gatekeeper warning. Fix with: `xattr -d com.apple.quarantine ~/.local/bin/vibecockpit`  
+> The install script handles this automatically.
+
 <details>
 <summary>More install options</summary>
 
