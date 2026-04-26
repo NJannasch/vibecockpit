@@ -21,7 +21,7 @@
 
 ## Why?
 
-You vibe-code across multiple AI tools. Claude Code, Codex, Copilot, Gemini, OpenCode — each stores sessions in its own format and directory. Switching between them means losing track of where you left off.
+You vibe-code across multiple AI tools. Claude Code, Claude Desktop, Codex, Copilot, Gemini, OpenCode — each stores sessions in its own format and directory. Switching between them means losing track of where you left off.
 
 **VibeCockpit** scans all of them automatically and gives you one place to search, filter, and resume any session — locally or on remote machines via SSH.
 
@@ -45,6 +45,7 @@ That's it. VibeCockpit auto-detects which tools you have installed and shows all
 | Tool | Auto-detect | Resume | Remote SSH |
 |------|:-----------:|:------:|:----------:|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | ✅ | ✅ | ✅ |
+| [Claude Desktop](https://claude.ai/download) (Claude Code in the desktop app) | ✅ (macOS) | ✅ | — |
 | [Codex CLI](https://github.com/openai/codex) | ✅ | ✅ | ✅ |
 | [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-cli) | ✅ | ✅ | ✅ |
 | [OpenCode](https://opencode.ai) | ✅ | — | ✅ |
@@ -92,9 +93,12 @@ VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/njannasch/vibecockpi
 # Custom directory
 PREFIX=/opt curl -fsSL https://raw.githubusercontent.com/njannasch/vibecockpit/main/install.sh | bash
 
-# From source
+# From source (Docker — recommended; produces a host-platform binary)
 git clone https://github.com/njannasch/vibecockpit && cd vibecockpit
-./build.sh    # requires Node 22+ and Go 1.24+
+./build.sh                   # Docker handles Node + Go inside the container
+
+# Or build with your own toolchain (Node 22+ and Go 1.24+ required)
+./build.sh local
 
 # Download binary directly
 # → https://github.com/njannasch/vibecockpit/releases
@@ -155,10 +159,13 @@ VibeCockpit reads session data directly from each tool's local storage. It **nev
 | Tool | Data Location |
 |------|---------------|
 | Claude Code | `~/.claude/projects/*/sessions-index.json` + `*.jsonl` |
+| Claude Desktop | `~/Library/Application Support/Claude/claude-code-sessions/*/*/local_*.json` (macOS) |
 | Codex CLI | `~/.codex/state_5.sqlite` + `history.jsonl` |
 | Copilot CLI | `~/.copilot/session-state/*/workspace.yaml` + `events.jsonl` |
 | OpenCode | `~/.local/share/opencode/opencode.db` |
 | Gemini CLI | `~/.gemini/tmp/*/chats/*.json` |
+
+> Resuming a Claude Desktop session uses the `claude://resume?session=…` deep link, opening the conversation back in the Claude Desktop app. Sessions deduped across the standalone CLI and the desktop wrapper so each appears once.
 
 For remote machines, it runs scan commands over SSH — no agent installation required on the remote.
 
@@ -174,8 +181,9 @@ cd vibecockpit
 vibecockpit --web --port 3456 &   # API backend
 cd frontend && npm run dev         # Svelte with hot-reload (proxies API)
 
-# Full build
-./build.sh                         # needs Node 22+ and Go 1.24+
+# Full build (Docker — recommended)
+./build.sh                         # cross-builds inside Docker
+./build.sh local                   # if you'd rather use the host toolchain
 
 # Run tests
 go test ./...
@@ -197,6 +205,7 @@ internal/
     remote/           SSH + HTTP remote scanning
   provider/           Session scanning per tool
     claude/           Claude Code (JSONL)
+    claudedesktop/    Claude Desktop's bundled Claude Code (macOS, deep link)
     codex/            Codex CLI (SQLite)
     copilot/          Copilot CLI (YAML + events)
     opencode/         OpenCode (SQLite)
@@ -219,7 +228,8 @@ vibecockpit [flags]
   --list               List all sessions (table format)
   --list --json        List all sessions (JSON format)
   --version            Print version
-  --install            Install to ~/.local/bin + desktop entry
+  --install            Install to ~/.local/bin (+ Linux .desktop or macOS .app)
+  --uninstall          Remove the installed binary, app launcher, and autostart
   --autostart          Start on login (systemd/launchd)
   --remove-autostart   Remove autostart service
   --yes                Skip confirmation prompts

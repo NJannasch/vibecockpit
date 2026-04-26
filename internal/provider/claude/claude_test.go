@@ -214,7 +214,7 @@ func TestScanProject_WithSessionsIndex(t *testing.T) {
 	}
 
 	active := map[string]int{}
-	sessions := scanProject(projPath, "-home-user-myproject", active)
+	sessions := scanProject(projPath, "-home-user-myproject", active, nil)
 
 	if len(sessions) != 1 {
 		t.Fatalf("expected 1 session, got %d", len(sessions))

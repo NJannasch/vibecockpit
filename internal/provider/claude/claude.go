@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"vibecockpit/internal/provider"
+	"vibecockpit/internal/provider/claudedesktop"
 )
 
 type Claude struct{}
@@ -90,7 +91,10 @@ func (c *Claude) ScanSessions(_ context.Context) ([]provider.Session, error) {
 	claudeDir := filepath.Join(home, ".claude")
 
 	active := scanActivePIDs(claudeDir)
-	sessions := scanProjects(claudeDir, active)
+	// Skip JSONLs whose UUID is already surfaced via the claude-desktop
+	// provider so each session shows up exactly once in the dashboard.
+	exclude := claudedesktop.CliSessionIDs()
+	sessions := scanProjects(claudeDir, active, exclude)
 
 	sort.Slice(sessions, func(i, j int) bool {
 		return sessions[i].Modified.After(sessions[j].Modified)
@@ -127,7 +131,7 @@ func scanActivePIDs(claudeDir string) map[string]int {
 	return result
 }
 
-func scanProjects(claudeDir string, active map[string]int) []provider.Session {
+func scanProjects(claudeDir string, active map[string]int, exclude map[string]struct{}) []provider.Session {
 	var sessions []provider.Session
 	projectsDir := filepath.Join(claudeDir, "projects")
 
@@ -141,7 +145,7 @@ func scanProjects(claudeDir string, active map[string]int) []provider.Session {
 			continue
 		}
 		projPath := filepath.Join(projectsDir, proj.Name())
-		sessions = append(sessions, scanProject(projPath, proj.Name(), active)...)
+		sessions = append(sessions, scanProject(projPath, proj.Name(), active, exclude)...)
 	}
 	return sessions
 }
@@ -154,20 +158,23 @@ func decodeProjectDir(dirName string) string {
 	return path
 }
 
-func scanProject(projPath string, dirName string, active map[string]int) []provider.Session {
+func scanProject(projPath string, dirName string, active map[string]int, exclude map[string]struct{}) []provider.Session {
 	indexData, err := os.ReadFile(filepath.Join(projPath, "sessions-index.json"))
 	if err != nil {
-		return scanProjectFromJSONL(projPath, dirName, active)
+		return scanProjectFromJSONL(projPath, dirName, active, exclude)
 	}
 
 	var idx indexFile
 	if json.Unmarshal(indexData, &idx) != nil {
-		return scanProjectFromJSONL(projPath, dirName, active)
+		return scanProjectFromJSONL(projPath, dirName, active, exclude)
 	}
 
 	var sessions []provider.Session
 	for _, entry := range idx.Entries {
 		if entry.IsSidechain {
+			continue
+		}
+		if _, skip := exclude[entry.SessionID]; skip {
 			continue
 		}
 
@@ -210,7 +217,7 @@ func scanProject(projPath string, dirName string, active map[string]int) []provi
 	return sessions
 }
 
-func scanProjectFromJSONL(projPath string, dirName string, active map[string]int) []provider.Session {
+func scanProjectFromJSONL(projPath string, dirName string, active map[string]int, exclude map[string]struct{}) []provider.Session {
 	entries, err := os.ReadDir(projPath)
 	if err != nil {
 		return nil
@@ -223,6 +230,10 @@ func scanProjectFromJSONL(projPath string, dirName string, active map[string]int
 		}
 		jsonlPath := filepath.Join(projPath, e.Name())
 		sessionID := strings.TrimSuffix(e.Name(), ".jsonl")
+
+		if _, skip := exclude[sessionID]; skip {
+			continue
+		}
 
 		fi, err := os.Stat(jsonlPath)
 		if err != nil {

@@ -31,9 +31,11 @@
     return text.length > max ? text.slice(0, max - 3) + "..." : text;
   }
 
-  // Split providers into front row (top 2-3) and back row
-  let frontRow = $derived(dashboardData.providers.slice(0, Math.min(3, dashboardData.providers.length)));
-  let backRow = $derived(dashboardData.providers.slice(Math.min(3, dashboardData.providers.length)));
+  // Split providers into front row (top 2 — one each side of the captain
+  // seat) and back row (the rest). Front-row capacity is fixed at 2 by
+  // the markup; bumping this past 2 silently drops the extras.
+  let frontRow = $derived(dashboardData.providers.slice(0, Math.min(2, dashboardData.providers.length)));
+  let backRow = $derived(dashboardData.providers.slice(Math.min(2, dashboardData.providers.length)));
 </script>
 
 <div class="cockpit">

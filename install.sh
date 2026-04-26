@@ -101,39 +101,12 @@ main() {
 
   ok "Installed ${version} to ${dest}"
 
-  # Check PATH
-  case ":${PATH}:" in
-    *":${bin_dir}:"*) ;;
-    *)
-      echo ""
-      info "Add to your shell profile:"
-      echo "  export PATH=\"${bin_dir}:\$PATH\""
-      echo ""
-      ;;
-  esac
-
-  # Desktop entry on Linux
-  if [ "$os" = "linux" ] && [ "$(id -u)" -ne 0 ]; then
-    local desktop_dir="${HOME}/.local/share/applications"
-    mkdir -p "$desktop_dir"
-    cat > "${desktop_dir}/${BINARY}.desktop" <<DESKTOP
-[Desktop Entry]
-Name=VibeCockpit
-Comment=AI coding session manager
-Exec=${dest} --web
-Icon=utilities-terminal
-Terminal=false
-Type=Application
-Categories=Development;
-StartupNotify=true
-DESKTOP
-    ok "Desktop entry created (find VibeCockpit in your app launcher)"
-  fi
-
+  # Delegate platform-specific install steps (PATH check, Linux .desktop
+  # entry, macOS .app launcher with the embedded icon) to the binary
+  # itself so there's a single source of truth and curl-piped installs
+  # pick up the same launcher Spotlight shows for `--install` users.
   echo ""
-  ok "Done! Run 'vibecockpit --web' to launch the web UI"
-  echo "     Run 'vibecockpit' for the terminal TUI"
-  echo "     Run 'vibecockpit --autostart' to start on login"
+  "$dest" --install --yes
 }
 
 main "$@"

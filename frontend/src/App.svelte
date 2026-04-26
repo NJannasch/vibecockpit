@@ -44,6 +44,14 @@
   let sortByVal = $state("modified");
   let groupByVal = $state("none");
   let activeFiltersVal = $state({});
+  let versionInfo = $state(null);
+
+  async function loadVersionInfo() {
+    try {
+      const r = await fetch("/api/version");
+      if (r.ok) versionInfo = await r.json();
+    } catch {}
+  }
 
   const unsubSessions = sessions.subscribe((v) => (sessionList = v));
   const unsubConfig = config.subscribe((v) => (configData = v));
@@ -96,6 +104,7 @@
     applyTheme(configData.theme === "dark" ? "dark" : "light");
     await refresh(false);
     startAutoRefresh();
+    loadVersionInfo();
   });
 
   // ─── Keyboard Shortcuts ───
@@ -545,6 +554,15 @@
   <div class="logo">
     <span class="logo-icon">&#9670;</span>
     <span>VibeCockpit</span>
+    {#if versionInfo?.current}
+      {#if versionInfo.updateAvailable}
+        <a class="version version-update" href={versionInfo.releaseUrl} target="_blank" title={"Update available: " + versionInfo.latest}>
+          {versionInfo.current}<span class="version-arrow"> ↑</span>
+        </a>
+      {:else}
+        <span class="version" title={versionInfo.latest ? "Up to date (latest: " + versionInfo.latest + ")" : "Current version"}>{versionInfo.current}</span>
+      {/if}
+    {/if}
   </div>
   <nav class="header-nav">
     <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
@@ -557,7 +575,11 @@
     </button>
     <button class="btn btn-primary btn-sm" onclick={showNewProject}>+ New</button>
     <button class="btn btn-icon btn-ghost" onclick={toggleTheme} title="Toggle theme">{themeIcon}</button>
-    <a href="https://github.com/njannasch/vibecockpit" target="_blank" class="btn btn-icon btn-ghost" title="GitHub">&#9733;</a>
+    <a href="https://github.com/njannasch/vibecockpit" target="_blank" class="btn btn-icon btn-ghost" title="GitHub" aria-label="GitHub">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.111.82-.26.82-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.762-1.605-2.665-.305-5.467-1.334-5.467-5.93 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0112 5.803c1.02.005 2.045.138 3.003.404 2.291-1.552 3.297-1.23 3.297-1.23.654 1.652.243 2.873.119 3.176.77.84 1.235 1.911 1.235 3.221 0 4.61-2.807 5.624-5.479 5.92.43.372.823 1.102.823 2.222v3.293c0 .319.218.694.825.576C20.565 21.796 24 17.298 24 12c0-6.63-5.37-12-12-12z"/>
+      </svg>
+    </a>
   </div>
 </header>
 

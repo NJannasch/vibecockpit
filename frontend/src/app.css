@@ -63,6 +63,10 @@ header{
 .logo{display:flex;align-items:center;gap:.6rem;font-size:1.2rem;font-weight:700}
 .logo-icon{color:var(--primary);font-size:1.4rem}
 .logo-sub{font-size:.8rem;color:var(--text-secondary);font-weight:400;margin-left:.5rem}
+.version{font-size:.7rem;font-weight:500;color:var(--text-secondary);background:var(--surface-2,rgba(0,0,0,.04));padding:.15rem .5rem;border-radius:999px;letter-spacing:.02em;text-decoration:none}
+.version-update{color:#fff;background:var(--primary);cursor:pointer}
+.version-update:hover{filter:brightness(1.1)}
+.version-arrow{font-weight:700;margin-left:.1rem}
 .header-actions{display:flex;gap:.6rem}
 .header-nav{display:flex;gap:.2rem}
 .nav-btn{

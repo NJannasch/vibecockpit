@@ -3,6 +3,7 @@
  */
 export const providerColors = {
   claude: "#7c3aed",
+  "claude-desktop": "#a855f7",
   codex: "#0284c7",
   gemini: "#d97706",
   opencode: "#db2777",
@@ -14,6 +15,7 @@ export const providerColors = {
  */
 export const providerLabels = {
   claude: "Claude Code",
+  "claude-desktop": "Claude Desktop",
   codex: "Codex CLI",
   copilot: "Copilot CLI",
   opencode: "OpenCode",
@@ -25,6 +27,7 @@ export const providerLabels = {
  */
 export const providerTypes = {
   claude: "cli",
+  "claude-desktop": "desktop",
   codex: "cli",
   copilot: "cli",
   opencode: "cli",

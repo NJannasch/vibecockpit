@@ -18,6 +18,7 @@ import (
 	"vibecockpit/internal/plugin/remote"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/provider/claude"
+	"vibecockpit/internal/provider/claudedesktop"
 	"vibecockpit/internal/provider/codex"
 	"vibecockpit/internal/provider/copilot"
 	"vibecockpit/internal/provider/gemini"
@@ -34,6 +35,7 @@ func main() {
 	webFlag := flag.Bool("web", false, "start the web UI (opens in browser)")
 	portFlag := flag.Int("port", 3456, "port for the web UI")
 	installFlag := flag.Bool("install", false, "install binary to ~/.local/bin and create desktop entry")
+	uninstallFlag := flag.Bool("uninstall", false, "remove the installed binary, app launcher, and autostart service")
 	autostartFlag := flag.Bool("autostart", false, "register as a login service (systemd/launchd)")
 	removeAutostartFlag := flag.Bool("remove-autostart", false, "remove the login service")
 	yesFlag := flag.Bool("yes", false, "skip confirmation prompts (for scripted installs)")
@@ -50,6 +52,14 @@ func main() {
 	if *installFlag {
 		if err := install.Install(installOpts); err != nil {
 			fmt.Fprintf(os.Stderr, "Install error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *uninstallFlag {
+		if err := install.Uninstall(installOpts); err != nil {
+			fmt.Fprintf(os.Stderr, "Uninstall error: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -86,7 +96,7 @@ func main() {
 	}
 
 	if *webFlag {
-		if err := web.Start(cfg, providers, *portFlag); err != nil {
+		if err := web.Start(cfg, providers, *portFlag, version); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -142,6 +152,7 @@ func buildRegistry(cfg *config.Config) *plugin.Registry {
 		_, err := os.Stat(home + "/.claude/projects")
 		return err == nil
 	}))
+	reg.Register(builtin.New("claude-desktop", "Claude Desktop", "⬢", claudedesktop.New(), claudedesktop.Available))
 	reg.Register(builtin.New("opencode", "OpenCode", "◇", oc, oc.Available))
 	reg.Register(builtin.New("codex", "Codex CLI", "◈", cx, cx.Available))
 	reg.Register(builtin.New("copilot", "Copilot CLI", "◉", copilot.New(), copilot.New().Available))

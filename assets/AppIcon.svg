@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Flat fills compress far better than gradients in PNG; keeps the
+       embedded ICNS small while preserving the purple HUD-reticle look. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="#2e1065"/>
+
+  <!-- outer ring -->
+  <circle cx="512" cy="512" r="320"
+          fill="none" stroke="#a78bfa" stroke-width="22"/>
+  <!-- inner ring -->
+  <circle cx="512" cy="512" r="220"
+          fill="none" stroke="#7c3aed" stroke-width="8"/>
+  <!-- crosshair -->
+  <g stroke="#e9d5ff" stroke-width="14" stroke-linecap="round">
+    <line x1="512" y1="120" x2="512" y2="240"/>
+    <line x1="512" y1="784" x2="512" y2="904"/>
+    <line x1="120" y1="512" x2="240" y2="512"/>
+    <line x1="784" y1="512" x2="904" y2="512"/>
+  </g>
+
+  <!-- center dot -->
+  <circle cx="512" cy="512" r="48" fill="#f5f3ff"/>
+  <circle cx="512" cy="512" r="20" fill="#7c3aed"/>
+
+  <!-- corner markers -->
+  <g fill="#a78bfa">
+    <circle cx="200" cy="200" r="14"/>
+    <circle cx="824" cy="200" r="14"/>
+    <circle cx="200" cy="824" r="14"/>
+    <circle cx="824" cy="824" r="14"/>
+  </g>
+</svg>

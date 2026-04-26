@@ -2,6 +2,7 @@ package install
 
 import (
 	"bufio"
+	_ "embed"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,9 @@ import (
 	"runtime"
 	"strings"
 )
+
+//go:embed assets/AppIcon.icns
+var appIconICNS []byte
 
 // Options controls interactive prompts during installation.
 type Options struct {
@@ -93,8 +97,195 @@ func Install(opts Options) error {
 		}
 	}
 
+	if runtime.GOOS == "darwin" {
+		if confirm(opts, "Create macOS app launcher (~/Applications/VibeCockpit.app)? [Y/n] ") {
+			createMacApp(dest, home)
+		}
+	}
+
 	fmt.Println("Done! Run 'vibecockpit --web' to launch the web UI")
 	fmt.Println("     Run 'vibecockpit --autostart' to start on login")
+	return nil
+}
+
+// createMacApp writes a minimal .app bundle to ~/Applications so the user
+// can launch the web UI from Launchpad / Spotlight / Dock. The bundle's
+// executable is a small bash launcher that opens the running web UI if
+// one is already up, or starts the binary first if it isn't.
+func createMacApp(binPath, home string) {
+	appDir := filepath.Join(home, "Applications", "VibeCockpit.app")
+	macosDir := filepath.Join(appDir, "Contents", "MacOS")
+	if err := os.MkdirAll(macosDir, 0755); err != nil {
+		fmt.Printf("Warning: could not create app bundle dir: %v\n", err)
+		return
+	}
+
+	resourcesDir := filepath.Join(appDir, "Contents", "Resources")
+	if err := os.MkdirAll(resourcesDir, 0755); err != nil {
+		fmt.Printf("Warning: could not create Resources dir: %v\n", err)
+		return
+	}
+	iconRef := ""
+	if len(appIconICNS) > 0 {
+		iconPath := filepath.Join(resourcesDir, "AppIcon.icns")
+		if err := os.WriteFile(iconPath, appIconICNS, 0644); err == nil {
+			iconRef = "\n\t<key>CFBundleIconFile</key><string>AppIcon</string>"
+		} else {
+			fmt.Printf("Warning: could not write app icon: %v\n", err)
+		}
+	}
+
+	plistPath := filepath.Join(appDir, "Contents", "Info.plist")
+	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>VibeCockpit</string>
+	<key>CFBundleDisplayName</key><string>VibeCockpit</string>
+	<key>CFBundleIdentifier</key><string>com.vibecockpit.app</string>
+	<key>CFBundleVersion</key><string>1.0</string>
+	<key>CFBundleShortVersionString</key><string>1.0</string>
+	<key>CFBundleExecutable</key><string>VibeCockpit</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleSignature</key><string>????</string>
+	<key>LSUIElement</key><true/>%s
+</dict>
+</plist>
+`, iconRef)
+	if err := os.WriteFile(plistPath, []byte(plist), 0644); err != nil {
+		fmt.Printf("Warning: could not write Info.plist: %v\n", err)
+		return
+	}
+
+	launcherPath := filepath.Join(macosDir, "VibeCockpit")
+	launcher := fmt.Sprintf(`#!/bin/bash
+# VibeCockpit Launchpad launcher.
+# Opens the web UI if vibecockpit is already serving; starts it first if not.
+PORT=3456
+URL="http://localhost:$PORT"
+BIN=%q
+
+if nc -z localhost "$PORT" 2>/dev/null; then
+  open "$URL"
+  exit 0
+fi
+
+if [ ! -x "$BIN" ]; then
+  osascript -e 'display alert "VibeCockpit not found" message "Run vibecockpit --install or reinstall via the install script."'
+  exit 1
+fi
+
+nohup "$BIN" --web --port "$PORT" >/dev/null 2>&1 &
+# Wait briefly for the server to bind before opening the browser.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if nc -z localhost "$PORT" 2>/dev/null; then break; fi
+  sleep 0.2
+done
+open "$URL"
+`, binPath)
+
+	if err := os.WriteFile(launcherPath, []byte(launcher), 0755); err != nil {
+		fmt.Printf("Warning: could not write launcher: %v\n", err)
+		return
+	}
+
+	// Strip quarantine — the bundle isn't signed, so without this it
+	// might trip Gatekeeper on first launch.
+	_ = exec.Command("xattr", "-dr", "com.apple.quarantine", appDir).Run()
+
+	fmt.Printf("App launcher created: %s\n", appDir)
+	fmt.Println("       Find VibeCockpit in Launchpad / Spotlight to start the web UI.")
+}
+
+// Uninstall reverses what Install + SetupAutostart created. It removes the
+// binary at ~/.local/bin/vibecockpit, the macOS .app bundle (or Linux
+// .desktop entry), and any autostart service. User config under
+// ~/.config/vibecockpit is left in place — the user can rm it themselves
+// if they want a fully clean slate.
+func Uninstall(opts Options) error {
+	if opts.Stdin == nil {
+		opts.Stdin = os.Stdin
+	}
+	if opts.Stdout == nil {
+		opts.Stdout = os.Stdout
+	}
+
+	home, _ := os.UserHomeDir()
+
+	// Compose the work list up front so the user knows what's about to
+	// disappear. Only items that actually exist are listed.
+	type target struct {
+		desc, path string
+		isDir      bool
+	}
+	candidates := []target{
+		{"binary", filepath.Join(home, ".local", "bin", "vibecockpit"), false},
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		candidates = append(candidates,
+			target{"macOS app launcher", filepath.Join(home, "Applications", "VibeCockpit.app"), true},
+			target{"launchd agent plist", filepath.Join(home, "Library", "LaunchAgents", "com.vibecockpit.web.plist"), false},
+		)
+	case "linux":
+		candidates = append(candidates,
+			target{"desktop entry", filepath.Join(home, ".local", "share", "applications", "vibecockpit.desktop"), false},
+			target{"systemd unit", filepath.Join(home, ".config", "systemd", "user", "vibecockpit.service"), false},
+		)
+	}
+
+	var present []target
+	for _, t := range candidates {
+		if _, err := os.Stat(t.path); err == nil {
+			present = append(present, t)
+		}
+	}
+	if len(present) == 0 {
+		fmt.Fprintln(opts.Stdout, "Nothing to remove — vibecockpit is not installed under this user's home directory.")
+		return nil
+	}
+
+	fmt.Fprintln(opts.Stdout, "The following will be removed:")
+	for _, t := range present {
+		fmt.Fprintf(opts.Stdout, "  - %s: %s\n", t.desc, t.path)
+	}
+	if !confirm(opts, "Proceed? [Y/n] ") {
+		fmt.Fprintln(opts.Stdout, "Aborted.")
+		return nil
+	}
+
+	// Stop the autostart service first, otherwise removing the unit /
+	// plist files races against the running daemon.
+	switch runtime.GOOS {
+	case "darwin":
+		plist := filepath.Join(home, "Library", "LaunchAgents", "com.vibecockpit.web.plist")
+		if _, err := os.Stat(plist); err == nil {
+			_ = exec.Command("launchctl", "unload", plist).Run()
+		}
+	case "linux":
+		_ = exec.Command("systemctl", "--user", "stop", "vibecockpit").Run()
+		_ = exec.Command("systemctl", "--user", "disable", "vibecockpit").Run()
+	}
+
+	for _, t := range present {
+		var err error
+		if t.isDir {
+			err = os.RemoveAll(t.path)
+		} else {
+			err = os.Remove(t.path)
+		}
+		if err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(opts.Stdout, "Warning: could not remove %s: %v\n", t.path, err)
+			continue
+		}
+		fmt.Fprintf(opts.Stdout, "Removed %s\n", t.path)
+	}
+
+	if runtime.GOOS == "linux" {
+		_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	}
+
+	fmt.Fprintln(opts.Stdout, "Done. Config under ~/.config/vibecockpit was left in place.")
 	return nil
 }
 

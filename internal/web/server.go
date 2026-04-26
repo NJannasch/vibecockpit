@@ -6,11 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"vibecockpit/internal/config"
@@ -24,9 +29,14 @@ var staticFiles embed.FS
 type server struct {
 	cfg           *config.Config
 	providers     []provider.Provider
+	version       string
 	cachedResult  []apiSession
 	cachedAt      time.Time
 	cacheTTL      time.Duration
+
+	versionMu      sync.Mutex
+	latestVersion  string
+	latestFetched  time.Time
 }
 
 type apiSession struct {
@@ -58,8 +68,8 @@ type apiConfig struct {
 	RemoteSources      []map[string]any   `json:"remoteSources,omitempty"`
 }
 
-func Start(cfg *config.Config, providers []provider.Provider, port int) error {
-	s := &server{cfg: cfg, providers: providers, cacheTTL: 10 * time.Second}
+func Start(cfg *config.Config, providers []provider.Provider, port int, version string) error {
+	s := &server{cfg: cfg, providers: providers, version: version, cacheTTL: 10 * time.Second}
 
 	if cfg.Terminal == "default" || cfg.Terminal == "" {
 		cfg.Terminal = detectTerminal()
@@ -74,16 +84,132 @@ func Start(cfg *config.Config, providers []provider.Provider, port int) error {
 	mux.HandleFunc("POST /api/test-ssh", s.handleTestSSH)
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("PUT /api/config", s.handlePutConfig)
+	mux.HandleFunc("GET /api/version", s.handleVersion)
 
 	sub, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		if isAddrInUse(err) {
+			killed, killErr := killStaleVibecockpit(port)
+			if killErr != nil {
+				return fmt.Errorf("port %d in use and could not free it: %w", port, killErr)
+			}
+			if killed {
+				fmt.Printf("Stopped previous vibecockpit instance on port %d\n", port)
+			}
+			listener, err = net.Listen("tcp", addr)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
 	fmt.Printf("VibeCockpit web UI: http://%s\n", addr)
 	fmt.Println("Press Ctrl+C to stop")
 	openBrowser(fmt.Sprintf("http://%s", addr))
 
-	return http.ListenAndServe(addr, mux)
+	return http.Serve(listener, mux)
+}
+
+func isAddrInUse(err error) bool {
+	if err == nil {
+		return false
+	}
+	// errors.Is(err, syscall.EADDRINUSE) is the principled check, but the
+	// net package wraps the error in ways that can break the chain across
+	// versions. The OS-level message is stable, so we accept either path.
+	if errno, ok := errnoOf(err); ok && errno == syscall.EADDRINUSE {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "address already in use") ||
+		strings.Contains(msg, "address in use") ||
+		strings.Contains(msg, "Only one usage of each socket address")
+}
+
+func errnoOf(err error) (syscall.Errno, bool) {
+	for ; err != nil; err = unwrap(err) {
+		if e, ok := err.(syscall.Errno); ok {
+			return e, true
+		}
+	}
+	return 0, false
+}
+
+func unwrap(err error) error {
+	type unwrapper interface{ Unwrap() error }
+	if u, ok := err.(unwrapper); ok {
+		return u.Unwrap()
+	}
+	return nil
+}
+
+// killStaleVibecockpit looks up whoever is bound to port and, if it's
+// another vibecockpit process, signals it to shut down so a fresh
+// instance can take over. Refuses to kill anything else; returns
+// (killed, err). On platforms without lsof it's a no-op.
+func killStaleVibecockpit(port int) (bool, error) {
+	if _, err := exec.LookPath("lsof"); err != nil {
+		return false, nil
+	}
+	out, err := exec.Command("lsof", "-t", "-iTCP:"+strconv.Itoa(port), "-sTCP:LISTEN").Output()
+	if err != nil {
+		// lsof exits non-zero when no match; that's fine.
+		return false, nil
+	}
+	pids := strings.Fields(strings.TrimSpace(string(out)))
+	if len(pids) == 0 {
+		return false, nil
+	}
+
+	self := os.Getpid()
+	var targets []int
+	for _, p := range pids {
+		pid, err := strconv.Atoi(p)
+		if err != nil || pid == self {
+			continue
+		}
+		comm, err := exec.Command("ps", "-p", p, "-o", "comm=").Output()
+		if err != nil {
+			continue
+		}
+		base := filepath.Base(strings.TrimSpace(string(comm)))
+		if base != "vibecockpit" {
+			return false, fmt.Errorf("port %d held by %s (pid %d); refusing to kill", port, base, pid)
+		}
+		targets = append(targets, pid)
+	}
+	if len(targets) == 0 {
+		return false, nil
+	}
+
+	for _, pid := range targets {
+		if proc, err := os.FindProcess(pid); err == nil {
+			_ = proc.Signal(syscall.SIGTERM)
+		}
+	}
+	// Wait up to 2s for the port to free; SIGKILL anything still holding it.
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	for i := 0; i < 20; i++ {
+		l, err := net.Listen("tcp", addr)
+		if err == nil {
+			_ = l.Close()
+			return true, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	for _, pid := range targets {
+		if proc, err := os.FindProcess(pid); err == nil {
+			_ = proc.Signal(syscall.SIGKILL)
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	return true, nil
 }
 
 func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
@@ -399,4 +525,115 @@ func detectTerminal() string {
 		}
 	}
 	return "xterm"
+}
+
+const (
+	githubLatestURL    = "https://api.github.com/repos/NJannasch/vibecockpit/releases/latest"
+	latestVersionTTL   = time.Hour
+	latestFetchTimeout = 3 * time.Second
+)
+
+type versionResponse struct {
+	Current         string `json:"current"`
+	Latest          string `json:"latest,omitempty"`
+	UpdateAvailable bool   `json:"updateAvailable"`
+	ReleaseURL      string `json:"releaseUrl,omitempty"`
+}
+
+func (s *server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	resp := versionResponse{Current: s.version}
+	if latest := s.getLatestVersion(); latest != "" {
+		resp.Latest = latest
+		resp.UpdateAvailable = compareSemver(s.version, latest) < 0
+		resp.ReleaseURL = "https://github.com/NJannasch/vibecockpit/releases/tag/" + latest
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// getLatestVersion returns the cached latest release tag, refreshing it
+// from the GitHub API at most once per latestVersionTTL. A failed fetch
+// is silent — the caller just gets the previously-cached value (or "").
+func (s *server) getLatestVersion() string {
+	s.versionMu.Lock()
+	if s.latestVersion != "" && time.Since(s.latestFetched) < latestVersionTTL {
+		v := s.latestVersion
+		s.versionMu.Unlock()
+		return v
+	}
+	s.versionMu.Unlock()
+
+	tag := fetchLatestTag()
+	if tag == "" {
+		return ""
+	}
+	s.versionMu.Lock()
+	s.latestVersion = tag
+	s.latestFetched = time.Now()
+	s.versionMu.Unlock()
+	return tag
+}
+
+func fetchLatestTag() string {
+	ctx, cancel := context.WithTimeout(context.Background(), latestFetchTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", githubLatestURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "vibecockpit")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return ""
+	}
+	var body struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return ""
+	}
+	return body.TagName
+}
+
+// compareSemver returns negative if a < b, zero if equal, positive if a > b.
+// Strips a "v" prefix and compares dotted numeric components. Non-numeric
+// segments compare as zero. Treats "dev" / unknown versions as smaller than
+// any real release, so a dev binary always shows "update available" when a
+// release exists.
+func compareSemver(a, b string) int {
+	if a == "" || a == "dev" {
+		if b == "" || b == "dev" {
+			return 0
+		}
+		return -1
+	}
+	if b == "" || b == "dev" {
+		return 1
+	}
+	a = strings.TrimPrefix(a, "v")
+	b = strings.TrimPrefix(b, "v")
+	ap := strings.Split(a, ".")
+	bp := strings.Split(b, ".")
+	n := len(ap)
+	if len(bp) > n {
+		n = len(bp)
+	}
+	for i := 0; i < n; i++ {
+		var ai, bi int
+		if i < len(ap) {
+			ai, _ = strconv.Atoi(ap[i])
+		}
+		if i < len(bp) {
+			bi, _ = strconv.Atoi(bp[i])
+		}
+		if ai != bi {
+			return ai - bi
+		}
+	}
+	return 0
 }
