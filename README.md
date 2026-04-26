@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/njannasch/vibecockpit/releases"><img src="https://img.shields.io/github/v/release/njannasch/vibecockpit?style=flat-square&color=7c3aed" alt="Release"></a>
+  <a href="https://github.com/NJannasch/vibecockpit/releases"><img src="https://img.shields.io/github/v/release/NJannasch/vibecockpit?style=flat-square&color=7c3aed" alt="Release"></a>
   <img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/Svelte-5-ff3e00?style=flat-square&logo=svelte&logoColor=white" alt="Svelte">
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS-lightgrey?style=flat-square" alt="Platforms">
@@ -29,7 +29,7 @@ You vibe-code across multiple AI tools. Claude Code, Claude Desktop, Codex, Copi
 
 ```bash
 # Install (Linux / macOS)
-curl -fsSL https://raw.githubusercontent.com/njannasch/vibecockpit/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
 
 # Launch the web dashboard
 vibecockpit --web
@@ -64,7 +64,7 @@ That's it. VibeCockpit auto-detects which tools you have installed and shows all
 - **Model picker** — resume with a different model (including 1M context variants)
 - **Remote SSH scanning** — scan sessions on remote machines, resume via SSH terminal
 - **Dark / light theme** — persisted to config
-- **Plugin architecture** — extensible for custom tools and future commercial addons
+- **Plugin architecture** — extensible for custom tools and agents
 - **Terminal TUI** — keyboard-driven alternative with the same search and filtering
 
 ## Install
@@ -72,7 +72,7 @@ That's it. VibeCockpit auto-detects which tools you have installed and shows all
 ### One-line install (Linux / macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/njannasch/vibecockpit/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
 ```
 
 To **update**, run the same command — the installer detects your existing version and upgrades in place.
@@ -85,23 +85,23 @@ To **update**, run the same command — the installer detects your existing vers
 
 ```bash
 # With wget
-wget -qO- https://raw.githubusercontent.com/njannasch/vibecockpit/main/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
 
 # Specific version
-VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/njannasch/vibecockpit/main/install.sh | bash
+VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
 
 # Custom directory
-PREFIX=/opt curl -fsSL https://raw.githubusercontent.com/njannasch/vibecockpit/main/install.sh | bash
+PREFIX=/opt curl -fsSL https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
 
 # From source (Docker — recommended; produces a host-platform binary)
-git clone https://github.com/njannasch/vibecockpit && cd vibecockpit
+git clone https://github.com/NJannasch/vibecockpit && cd vibecockpit
 ./build.sh                   # Docker handles Node + Go inside the container
 
 # Or build with your own toolchain (Node 22+ and Go 1.24+ required)
 ./build.sh local
 
 # Download binary directly
-# → https://github.com/njannasch/vibecockpit/releases
+# → https://github.com/NJannasch/vibecockpit/releases
 ```
 
 </details>
@@ -174,7 +174,7 @@ For remote machines, it runs scan commands over SSH — no agent installation re
 VibeCockpit is built with **Go** (backend + TUI) and **Svelte 5** (web UI).
 
 ```bash
-git clone https://github.com/njannasch/vibecockpit
+git clone https://github.com/NJannasch/vibecockpit
 cd vibecockpit
 
 # Development: start Go API and Svelte dev server separately
