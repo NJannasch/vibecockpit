@@ -1,0 +1,7 @@
+The gitleaks.toml file is from the gitleaks project:
+https://github.com/gitleaks/gitleaks
+
+Licensed under the MIT License.
+Copyright (c) 2019 Zachary Rice
+
+Used for secret detection / sanitization in VibeCockpit's MCP output.

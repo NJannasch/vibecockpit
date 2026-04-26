@@ -13,6 +13,7 @@ import (
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/install"
 	"vibecockpit/internal/launcher"
+	mcpserver "vibecockpit/internal/mcp"
 	"vibecockpit/internal/plugin"
 	"vibecockpit/internal/plugin/builtin"
 	"vibecockpit/internal/plugin/remote"
@@ -33,6 +34,7 @@ func main() {
 	listFlag := flag.Bool("list", false, "list sessions non-interactively and exit")
 	jsonFlag := flag.Bool("json", false, "output as JSON (with --list)")
 	webFlag := flag.Bool("web", false, "start the web UI (opens in browser)")
+	mcpFlag := flag.Bool("mcp", false, "start as MCP server (JSON-RPC over stdio)")
 	portFlag := flag.Int("port", 3456, "port for the web UI")
 	installFlag := flag.Bool("install", false, "install binary to ~/.local/bin and create desktop entry")
 	uninstallFlag := flag.Bool("uninstall", false, "remove the installed binary, app launcher, and autostart service")
@@ -98,6 +100,15 @@ func main() {
 	if *webFlag {
 		if err := web.Start(cfg, providers, *portFlag, version); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *mcpFlag {
+		srv := mcpserver.NewServer(providers, version)
+		if err := srv.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
 			os.Exit(1)
 		}
 		return
