@@ -15,7 +15,7 @@
     startAutoRefresh,
     stopAutoRefresh,
   } from "./lib/stores.js";
-  import { saveConfig, launchSession, deleteSession, createProject as apiCreateProject, testSSH } from "./lib/api.js";
+  import { saveConfig, launchSession, deleteSession, createProject as apiCreateProject, testSSH, startSecretScan, getScanStatus } from "./lib/api.js";
   import { shortModel, relativeTime, providerColors, providerLabels, getProviderType, dateGroup } from "./lib/utils.js";
   import Dashboard from "./components/Dashboard.svelte";
 
@@ -29,6 +29,8 @@
   let newProjectModel = $state("");
   let lastScanned = $state(null);
   let scanning = $state(false);
+  let scanStatus = $state({ state: "idle", findings: [], findingCount: 0, sessionsDone: 0, sessionsTotal: 0 });
+  let scanPollTimer = $state(null);
   let pendingDelete = $state(null);
   let pendingResume = $state(null);
   let resumeModel = $state("");
@@ -131,6 +133,13 @@
 
   function navigateTo(p) {
     page = p;
+    if (p === "security" && !scanPollTimer) {
+      // Check if a scan is already running on the server
+      getScanStatus().then(s => {
+        scanStatus = s;
+        if (s.state === "scanning") pollScan();
+      }).catch(() => {});
+    }
   }
 
   function filterByProvider(providerName) {
@@ -219,13 +228,26 @@
     doLaunch(sessionId, provider);
   }
 
+  let highlightProvider = $state("");
+  let settingsSaved = $state(false);
+  let settingsSavedTimer = $state(null);
+
   async function doLaunch(sessionId, provider, modelOverride) {
     try {
       const data = await launchSession(sessionId, provider, modelOverride);
       if (data.error) {
         if (data.error.includes("PATH")) {
-          showToast(data.error, "error");
-          openModal = "settings";
+          showToast(
+            `"${provider}" not found in PATH. Configure its location in Settings → Provider paths.`,
+            "error"
+          );
+          highlightProvider = provider;
+          page = "settings";
+          // Scroll to provider paths after render
+          setTimeout(() => {
+            const el = document.getElementById("provider-path-" + provider);
+            if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", block: "center" }); }
+          }, 200);
         } else {
           showToast(data.error, "error");
         }
@@ -307,6 +329,31 @@
     } catch (err) {
       showToast("Failed: " + err.message, "error");
     }
+  }
+
+  // ─── Secret Scan ───
+
+  async function triggerScan() {
+    if (scanStatus.state === "scanning") {
+      // TODO: stop scan via API
+      return;
+    }
+    scanStatus = { state: "starting", findings: [], findingCount: 0, sessionsDone: 0, sessionsTotal: 0, filesScanned: 0, linesScanned: 0 };
+    await startSecretScan();
+    pollScan();
+  }
+
+  function pollScan() {
+    if (scanPollTimer) clearInterval(scanPollTimer);
+    scanPollTimer = setInterval(async () => {
+      try {
+        scanStatus = await getScanStatus();
+        if (scanStatus.state === "done") {
+          clearInterval(scanPollTimer);
+          scanPollTimer = null;
+        }
+      } catch {}
+    }, 1500);
   }
 
   // ─── SSH Test ───
@@ -567,6 +614,9 @@
   <nav class="header-nav">
     <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
     <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
+    {#if configData.enableScanner}
+      <button class="nav-btn" class:active={page === "security"} onclick={() => navigateTo("security")}>Security</button>
+    {/if}
     <button class="nav-btn" class:active={page === "settings"} onclick={() => navigateTo("settings")}>Settings</button>
   </nav>
   <div class="header-actions">
@@ -845,66 +895,234 @@
     </div>
   {/if}
 </main>
+{:else if page === "security"}
+  <main>
+    {@render securityPage()}
+  </main>
 {:else if page === "settings"}
   <main>
     {@render settingsPage()}
   </main>
 {/if}
 
-{#snippet settingsPage()}
-  <div style="max-width:640px;margin:2rem auto;padding:0 1rem">
-    <h2 style="margin-bottom:1.5rem">Settings</h2>
-    <div class="field">
-      <label>Terminal emulator</label>
-      <select value={configData.terminal || "default"} onchange={(e) => { const u = {...configData, terminal: e.target.value}; config.set(u); saveConfig(u); }}>
-        {#each configData.availableTerminals || ["default"] as t}
-          <option value={t}>{t}{t === "default" ? " (auto-detect)" : t === "custom" ? " (custom command)" : ""}</option>
-        {/each}
-      </select>
+{#snippet securityPage()}
+  <div style="max-width:900px;margin:2rem auto;padding:0 1rem">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+      <div>
+        <h2 style="margin-bottom:.3rem">Secret Scanner</h2>
+        <p style="font-size:.82rem;color:var(--text-secondary)">Scan session files for leaked API keys, tokens, passwords, and other secrets.</p>
+      </div>
+      <button
+        class="btn"
+        class:btn-primary={scanStatus.state !== "scanning"}
+        class:btn-danger={scanStatus.state === "scanning"}
+        onclick={triggerScan}
+        disabled={scanStatus.state === "starting"}
+      >
+        {#if scanStatus.state === "scanning"}
+          Stop Scan
+        {:else if scanStatus.state === "starting"}
+          Starting...
+        {:else}
+          Start Scan
+        {/if}
+      </button>
     </div>
-    <div class="field">
-      <label>Default new project directory</label>
-      <input type="text" value={configData.newProjectDir || ""} onchange={(e) => { const u = {...configData, newProjectDir: e.target.value}; config.set(u); saveConfig(u); }} />
-    </div>
-    <div class="field">
-      <label>Provider binary paths</label>
-      <div class="field-hint" style="margin-bottom:.4rem">Override if a tool isn't in your PATH.</div>
-      {#each [...new Set(sessionList.map(s => s.provider))] as p}
-        <div style="display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center">
-          <label style="width:6rem;font-size:.82rem;font-weight:500">{p}</label>
-          <input type="text" value={configData.providerPaths?.[p] || ""} placeholder="auto-detect" style="flex:1"
-            onchange={(e) => {
-              const paths = {...(configData.providerPaths || {}), [p]: e.target.value};
-              if (!e.target.value) delete paths[p];
-              const u = {...configData, providerPaths: paths};
-              config.set(u); saveConfig(u);
-            }} />
+
+    <!-- Progress panel (scanning or done) -->
+    {#if scanStatus.state === "scanning" || scanStatus.state === "starting"}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem">
+        <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:.5rem">
+          <span>Scanning: <b>{scanStatus.currentFile || "initializing..."}</b></span>
+          <span style="color:var(--text-secondary)">{scanStatus.sessionsDone}/{scanStatus.sessionsTotal} sessions</span>
         </div>
-      {/each}
+        <div style="height:6px;background:var(--surface-active);border-radius:3px;overflow:hidden;margin-bottom:.5rem">
+          <div style="height:100%;background:var(--primary);border-radius:3px;transition:width .5s;width:{scanStatus.sessionsTotal ? (scanStatus.sessionsDone / scanStatus.sessionsTotal * 100) : 0}%"></div>
+        </div>
+        <div style="display:flex;gap:1.2rem;font-size:.75rem;color:var(--text-secondary)">
+          <span>{scanStatus.filesScanned || 0} files scanned</span>
+          <span>{(scanStatus.linesScanned || 0).toLocaleString()} lines processed</span>
+          <span>{scanStatus.findingCount || 0} finding{scanStatus.findingCount !== 1 ? "s" : ""}</span>
+          <span>{scanStatus.patternsLoaded || 0} rules loaded</span>
+        </div>
+      </div>
+    {/if}
+
+    {#if scanStatus.state === "done"}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem">
+        <div style="display:flex;gap:1.5rem;font-size:.85rem;flex-wrap:wrap">
+          <span><b style="color:{scanStatus.findingCount > 0 ? 'var(--danger)' : 'var(--success)'}">{scanStatus.findingCount}</b> finding{scanStatus.findingCount !== 1 ? "s" : ""}</span>
+          <span><b>{scanStatus.sessionsTotal}</b> sessions</span>
+          <span><b>{scanStatus.filesScanned || 0}</b> files</span>
+          <span><b>{(scanStatus.linesScanned || 0).toLocaleString()}</b> lines</span>
+          <span><b>{scanStatus.patternsLoaded}</b> rules</span>
+          <span style="color:var(--text-secondary)">{(scanStatus.durationMs / 1000).toFixed(1)}s</span>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Findings table (shown during scan AND after done) -->
+    {#if scanStatus.findings && scanStatus.findings.length > 0}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);text-align:left">
+              <th style="padding:.5rem .8rem;font-weight:600">Rule</th>
+              <th style="padding:.5rem .8rem;font-weight:600">Provider</th>
+              <th style="padding:.5rem .8rem;font-weight:600">Project</th>
+              <th style="padding:.5rem .8rem;font-weight:600">Line</th>
+              <th style="padding:.5rem .8rem;font-weight:600">Match (partially redacted)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each scanStatus.findings as f}
+              <tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:.4rem .8rem"><span style="background:var(--danger-dim);color:var(--danger);padding:.1rem .4rem;border-radius:4px;font-size:.72rem;font-weight:500">{f.ruleId}</span></td>
+                <td style="padding:.4rem .8rem;font-size:.78rem">{f.provider}</td>
+                <td style="padding:.4rem .8rem;font-weight:500;font-size:.78rem">{f.projectName}</td>
+                <td style="padding:.4rem .8rem;font-family:monospace;font-size:.75rem">{f.line}</td>
+                <td style="padding:.4rem .8rem;font-family:monospace;font-size:.73rem;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{f.match}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else if scanStatus.state === "done"}
+      <div style="text-align:center;padding:3rem;color:var(--success)">
+        <div style="font-size:2rem;margin-bottom:.5rem">&#10003;</div>
+        <h3>No secrets found</h3>
+        <p style="color:var(--text-secondary);font-size:.85rem">All {scanStatus.filesScanned || 0} files are clean.</p>
+      </div>
+    {:else if scanStatus.state === "idle"}
+      <div style="text-align:center;padding:3rem;color:var(--text-secondary)">
+        <p>Click "Start Scan" to check your session files for leaked secrets.</p>
+        <p style="font-size:.78rem;margin-top:.5rem">Uses gitleaks detection rules. Read-only — nothing is modified.</p>
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet settingsPage()}
+  {@const save = (updater) => {
+    const u = updater(configData);
+    config.set(u);
+    saveConfig(u);
+    settingsSaved = true;
+    clearTimeout(settingsSavedTimer);
+    settingsSavedTimer = setTimeout(() => settingsSaved = false, 2000);
+  }}
+  <div class="settings-page">
+    <div class="settings-header">
+      <h2>Settings</h2>
+      {#if settingsSaved}
+        <span class="settings-saved">Saved</span>
+      {/if}
     </div>
-    <div class="field">
-      <label>Remote sources (SSH)</label>
-      <div class="field-hint" style="margin-bottom:.6rem">Scan AI coding sessions on remote machines. Changes require restart.</div>
+
+    <!-- General -->
+    <div class="settings-card">
+      <h3 class="settings-section">General</h3>
+      <div class="settings-row">
+        <div class="settings-label">
+          <span>Terminal emulator</span>
+          <span class="field-hint">Used when launching sessions from the web UI</span>
+        </div>
+        <select value={configData.terminal || "default"} onchange={(e) => save(c => ({...c, terminal: e.target.value}))}>
+          {#each configData.availableTerminals || ["default"] as t}
+            <option value={t}>{t}{t === "default" ? " (auto-detect)" : t === "custom" ? " (custom command)" : ""}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">
+          <span>Default project directory</span>
+        </div>
+        <input type="text" value={configData.newProjectDir || ""} onchange={(e) => save(c => ({...c, newProjectDir: e.target.value}))} />
+      </div>
+    </div>
+
+    <!-- Paths -->
+    <div class="settings-card">
+      <h3 class="settings-section">Paths</h3>
+      <div class="settings-row" style="flex-direction:column;align-items:stretch">
+        <div class="settings-label" style="margin-bottom:.4rem">
+          <span>Extra PATH directories</span>
+          <span class="field-hint">Prepended to PATH when launching tools (comma-separated)</span>
+        </div>
+        <input type="text" value={(configData.extraPath || []).join(", ")} placeholder="~/.nvm/versions/node/v23.11.1/bin"
+          onchange={(e) => save(c => ({...c, extraPath: e.target.value.split(",").map(s => s.trim()).filter(Boolean)}))} />
+      </div>
+      <div class="settings-divider"></div>
+      <div style="padding:.2rem 0">
+        <div class="settings-label" style="margin-bottom:.5rem">
+          <span>Provider binary paths</span>
+          <span class="field-hint">Override if a tool isn't in your system PATH</span>
+        </div>
+        {#each [...new Set(sessionList.map(s => s.provider))] as p}
+          <div class="settings-path-row">
+            <label class="settings-path-label">{p}</label>
+            <input id="provider-path-{p}" type="text" value={configData.providerPaths?.[p] || ""}
+              placeholder="/path/to/{p}"
+              class:settings-path-highlight={highlightProvider === p}
+              onfocus={() => { if (highlightProvider === p) highlightProvider = ""; }}
+              onchange={(e) => save(c => {
+                const paths = {...(c.providerPaths || {}), [p]: e.target.value};
+                if (!e.target.value) delete paths[p];
+                return {...c, providerPaths: paths};
+              })} />
+          </div>
+        {/each}
+      </div>
+    </div>
+
+    <!-- Remote -->
+    <div class="settings-card">
+      <h3 class="settings-section">Remote Sources</h3>
+      <p class="field-hint" style="margin-bottom:.8rem">Scan AI coding sessions on remote machines via SSH. Requires restart after changes.</p>
       {#each configData.remoteSources || [] as src, i}
-        <div style="display:flex;gap:.4rem;margin-bottom:.5rem;align-items:center;flex-wrap:wrap">
+        <div class="settings-remote-row">
           <input type="text" value={src.name || ""} placeholder="name" style="width:6rem"
             onchange={(e) => updateRemoteSource(i, "name", e.target.value)} />
           <input type="text" value={src.user || ""} placeholder="user" style="width:5rem"
             onchange={(e) => updateRemoteSource(i, "user", e.target.value)} />
-          <span style="color:var(--text-secondary)">@</span>
-          <input type="text" value={src.host || ""} placeholder="hostname or IP" style="flex:1;min-width:8rem"
+          <span style="color:var(--text-secondary);font-size:.85rem">@</span>
+          <input type="text" value={src.host || ""} placeholder="hostname" style="flex:1;min-width:7rem"
             onchange={(e) => updateRemoteSource(i, "host", e.target.value)} />
           <select value={src.method || "ssh"} style="width:5rem"
             onchange={(e) => updateRemoteSource(i, "method", e.target.value)}>
             <option value="ssh">SSH</option>
             <option value="http">HTTP</option>
           </select>
-          <button class="btn btn-sm" onclick={() => doTestSSH(src)} title="Test connection">Test</button>
+          <button class="btn btn-sm" onclick={() => doTestSSH(src)}>Test</button>
           <button class="btn btn-sm" style="color:var(--danger)" onclick={() => removeRemoteSource(i)}>&#10005;</button>
         </div>
       {/each}
-      <button class="btn btn-sm" onclick={addRemoteSource}>+ Add remote source</button>
+      <button class="btn btn-sm" onclick={addRemoteSource} style="margin-top:.3rem">+ Add remote source</button>
     </div>
+
+    <!-- Scanner (feature-flagged) -->
+    {#if configData.enableScanner}
+    <div class="settings-card">
+      <h3 class="settings-section">Secret Scanner</h3>
+      <div class="settings-row" style="flex-direction:column;align-items:stretch">
+        <div class="settings-label" style="margin-bottom:.4rem">
+          <span>Skip rules</span>
+          <span class="field-hint">Rule IDs to exclude (comma-separated). <code>generic-api-key</code> is always skipped.</span>
+        </div>
+        <input type="text" value={(configData.scanSkipRules || []).join(", ")} placeholder="rule-id-1, rule-id-2"
+          onchange={(e) => save(c => ({...c, scanSkipRules: e.target.value.split(",").map(s => s.trim()).filter(Boolean)}))} />
+      </div>
+      <div class="settings-row" style="flex-direction:column;align-items:stretch">
+        <div class="settings-label" style="margin-bottom:.4rem">
+          <span>Extra keywords</span>
+          <span class="field-hint">Additional trigger keywords for the scanner (comma-separated)</span>
+        </div>
+        <input type="text" value={(configData.scanExtraHints || []).join(", ")} placeholder="my-service, custom-prefix"
+          onchange={(e) => save(c => ({...c, scanExtraHints: e.target.value.split(",").map(s => s.trim()).filter(Boolean)}))} />
+      </div>
+    </div>
+    {/if}
   </div>
 {/snippet}
 
@@ -967,11 +1185,13 @@
         <div style="display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center">
           <label style="width:5rem;font-size:.8rem;font-weight:500">{p}</label>
           <input
+            id="provider-path-{p}"
             type="text"
             value={settingsProviderPaths[p] || ""}
             oninput={(e) => (settingsProviderPaths = { ...settingsProviderPaths, [p]: e.target.value })}
-            placeholder="auto-detect from PATH"
-            style="flex:1;padding:.4rem .6rem;font-size:.8rem"
+            placeholder="e.g. ~/.nvm/versions/node/v22.21.1/bin/{p}"
+            style="flex:1;padding:.4rem .6rem;font-size:.8rem;{highlightProvider === p ? 'border-color:var(--danger);box-shadow:0 0 0 2px var(--danger-dim)' : ''}"
+            onfocus={() => { if (highlightProvider === p) highlightProvider = ""; }}
           />
         </div>
       {/each}

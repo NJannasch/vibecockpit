@@ -33,10 +33,9 @@ var fallbackPatterns = []string{
 	`(?i)AKIA[0-9A-Z]{16}`,
 	`(?i)-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----`,
 	`(?i)export\s+\w+=\S{8,}`,
-	`(?i)(password|passwd|secret|token|api_key)\s*[:=]\s*\S{6,}`,
 }
 
-func cachePath() string {
+func CachePath() string {
 	dir := os.Getenv("XDG_CONFIG_HOME")
 	if dir == "" {
 		home, _ := os.UserHomeDir()
@@ -62,7 +61,7 @@ func loadPatterns() {
 }
 
 func loadRules() string {
-	path := cachePath()
+	path := CachePath()
 
 	// Check if cached file exists and is fresh
 	if info, err := os.Stat(path); err == nil {
@@ -176,7 +175,7 @@ func PatternCount() int {
 }
 
 func RulesAge() time.Duration {
-	info, err := os.Stat(cachePath())
+	info, err := os.Stat(CachePath())
 	if err != nil {
 		return 0
 	}
@@ -188,7 +187,7 @@ func RefreshRules() error {
 	if err != nil {
 		return err
 	}
-	path := cachePath()
+	path := CachePath()
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
 	return os.WriteFile(path, data, 0644)
 }

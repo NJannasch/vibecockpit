@@ -150,6 +150,33 @@ main{flex:1;padding:1.5rem 2rem 3rem}
 .empty{text-align:center;padding:4rem 1rem;color:var(--text-secondary)}
 .empty h3{font-size:1.1rem;color:var(--text);margin-bottom:.5rem}
 
+/* ─── Settings Page ─── */
+.settings-page{max-width:680px;margin:1.5rem auto;padding:0 1rem}
+.settings-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem}
+.settings-header h2{font-size:1.2rem}
+.settings-saved{
+  font-size:.75rem;font-weight:500;color:var(--success);
+  background:var(--success-dim);padding:.25rem .7rem;border-radius:12px;
+  animation:fadeIn .2s ease;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.settings-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1rem 1.2rem;margin-bottom:1rem;
+}
+.settings-section{font-size:.88rem;font-weight:600;margin-bottom:.8rem;color:var(--text)}
+.settings-row{display:flex;align-items:center;gap:.8rem;margin-bottom:.6rem}
+.settings-row select,.settings-row input[type="text"]{flex:1}
+.settings-label{display:flex;flex-direction:column;gap:.1rem;min-width:0}
+.settings-label>span:first-child{font-size:.82rem;font-weight:500}
+.settings-divider{height:1px;background:var(--border);margin:.6rem 0}
+.settings-path-row{display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center}
+.settings-path-label{width:6.5rem;font-size:.8rem;font-weight:500;flex-shrink:0;color:var(--text-secondary)}
+.settings-path-row input{flex:1;font-size:.82rem}
+.settings-path-highlight{border-color:var(--danger) !important;box-shadow:0 0 0 2px var(--danger-dim) !important}
+.settings-remote-row{display:flex;gap:.4rem;margin-bottom:.5rem;align-items:center;flex-wrap:wrap}
+.settings-remote-row input,.settings-remote-row select{font-size:.82rem}
+
 /* ─── Onboarding ─── */
 .onboarding{
   max-width:520px;margin:3rem auto;text-align:center;

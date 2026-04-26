@@ -21,6 +21,7 @@ import (
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/launcher"
 	"vibecockpit/internal/provider"
+	"vibecockpit/internal/scanner"
 )
 
 //go:embed all:static
@@ -33,6 +34,7 @@ type server struct {
 	cachedResult  []apiSession
 	cachedAt      time.Time
 	cacheTTL      time.Duration
+	secretScanner *scanner.Scanner
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -66,10 +68,27 @@ type apiConfig struct {
 	Models             []string           `json:"models,omitempty"`
 	ProviderPaths      map[string]string  `json:"providerPaths,omitempty"`
 	RemoteSources      []map[string]any   `json:"remoteSources,omitempty"`
+	EnableScanner      bool               `json:"enableScanner"`
+	EnableMCP          bool               `json:"enableMcp"`
+	ExtraPath          []string           `json:"extraPath,omitempty"`
+	ScanSkipRules      []string           `json:"scanSkipRules,omitempty"`
+	ScanExtraHints     []string           `json:"scanExtraHints,omitempty"`
 }
 
 func Start(cfg *config.Config, providers []provider.Provider, port int, version string) error {
-	s := &server{cfg: cfg, providers: providers, version: version, cacheTTL: 10 * time.Second}
+	s := &server{
+		cfg: cfg, providers: providers, version: version,
+		cacheTTL: 10 * time.Second,
+		secretScanner: func() *scanner.Scanner {
+			if cfg.EnableScanner {
+				return scanner.New(providers, scanner.Config{
+					SkipRules:  cfg.ScanSkipRules,
+					ExtraHints: cfg.ScanExtraHints,
+				})
+			}
+			return nil
+		}(),
+	}
 
 	if cfg.Terminal == "default" || cfg.Terminal == "" {
 		cfg.Terminal = detectTerminal()
@@ -85,6 +104,10 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
+	if cfg.EnableScanner {
+		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
+		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
+	}
 
 	sub, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
@@ -431,7 +454,12 @@ func (s *server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		AvailableTerminals: config.AvailableTerminals(),
 		Models:             config.Models,
 		ProviderPaths:      s.cfg.ProviderPaths,
+		EnableScanner:      s.cfg.EnableScanner,
+		EnableMCP:          s.cfg.EnableMCP,
 		RemoteSources:      s.cfg.RemoteSources,
+		ExtraPath:          s.cfg.ExtraPath,
+		ScanSkipRules:      s.cfg.ScanSkipRules,
+		ScanExtraHints:     s.cfg.ScanExtraHints,
 	})
 }
 
@@ -459,6 +487,15 @@ func (s *server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.RemoteSources != nil {
 		s.cfg.RemoteSources = req.RemoteSources
+	}
+	if req.ExtraPath != nil {
+		s.cfg.ExtraPath = req.ExtraPath
+	}
+	if req.ScanSkipRules != nil {
+		s.cfg.ScanSkipRules = req.ScanSkipRules
+	}
+	if req.ScanExtraHints != nil {
+		s.cfg.ScanExtraHints = req.ScanExtraHints
 	}
 	if err := s.cfg.Save(); err != nil {
 		jsonError(w, err.Error(), 500)
@@ -538,6 +575,17 @@ type versionResponse struct {
 	Latest          string `json:"latest,omitempty"`
 	UpdateAvailable bool   `json:"updateAvailable"`
 	ReleaseURL      string `json:"releaseUrl,omitempty"`
+}
+
+func (s *server) handleStartScan(w http.ResponseWriter, r *http.Request) {
+	s.secretScanner.Start()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+}
+
+func (s *server) handleScanStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.secretScanner.GetStatus())
 }
 
 func (s *server) handleVersion(w http.ResponseWriter, r *http.Request) {

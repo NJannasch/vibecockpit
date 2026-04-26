@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"vibecockpit/internal/config"
+	"vibecockpit/internal/demo"
 	"vibecockpit/internal/install"
 	"vibecockpit/internal/launcher"
 	mcpserver "vibecockpit/internal/mcp"
@@ -41,6 +42,7 @@ func main() {
 	autostartFlag := flag.Bool("autostart", false, "register as a login service (systemd/launchd)")
 	removeAutostartFlag := flag.Bool("remove-autostart", false, "remove the login service")
 	yesFlag := flag.Bool("yes", false, "skip confirmation prompts (for scripted installs)")
+	demoFlag := flag.Bool("demo", false, "load demo data for screenshots and testing")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -86,7 +88,12 @@ func main() {
 	cfg := config.Load()
 	registry := buildRegistry(cfg)
 
-	providers := registry.Providers()
+	var providers []provider.Provider
+	if *demoFlag {
+		providers = []provider.Provider{demo.New()}
+	} else {
+		providers = registry.Providers()
+	}
 
 	if *listFlag {
 		if *jsonFlag {
@@ -106,6 +113,10 @@ func main() {
 	}
 
 	if *mcpFlag {
+		if !cfg.EnableMCP {
+			fmt.Fprintln(os.Stderr, "MCP server is disabled. Enable it in config.yaml:\n\n  enable_mcp: true")
+			os.Exit(1)
+		}
 		srv := mcpserver.NewServer(providers, version)
 		if err := srv.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)

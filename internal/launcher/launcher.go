@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -34,11 +35,11 @@ func launch(cfg *config.Config, provName, bin string, args []string, dir string)
 
 	switch cfg.Terminal {
 	case "", "default":
-		return execReplace(binPath, bin, args, dir)
+		return execReplace(cfg, binPath, bin, args, dir)
 	case "custom":
-		return launchCustom(cfg.CustomTermCmd, binPath, args, dir)
+		return launchCustom(cfg, cfg.CustomTermCmd, binPath, args, dir)
 	default:
-		return launchTerminal(cfg.Terminal, binPath, args, dir)
+		return launchTerminal(cfg, cfg.Terminal, binPath, args, dir)
 	}
 }
 
@@ -65,15 +66,43 @@ func expandHome(path string) string {
 	return path
 }
 
-func execReplace(binPath, bin string, args []string, dir string) error {
+func execReplace(cfg *config.Config, binPath, bin string, args []string, dir string) error {
 	if err := os.Chdir(dir); err != nil {
 		return err
 	}
 	argv := append([]string{bin}, args...)
-	return syscall.Exec(binPath, argv, os.Environ())
+	return syscall.Exec(binPath, argv, envForLaunch(cfg, binPath))
 }
 
-func launchTerminal(terminal, binPath string, args []string, dir string) error {
+// envForLaunch prepends extra_path directories and the binary's parent dir to PATH.
+func envForLaunch(cfg *config.Config, binPath string) []string {
+	env := os.Environ()
+
+	var prepend []string
+	for _, p := range cfg.ExtraPath {
+		prepend = append(prepend, expandHome(p))
+	}
+	// Also add the binary's own directory so #!/usr/bin/env node finds the right node
+	binDir := filepath.Dir(binPath)
+	if binDir != "." && binDir != "" {
+		prepend = append(prepend, binDir)
+	}
+
+	if len(prepend) == 0 {
+		return env
+	}
+
+	extra := strings.Join(prepend, string(os.PathListSeparator))
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + extra + string(os.PathListSeparator) + e[5:]
+			break
+		}
+	}
+	return env
+}
+
+func launchTerminal(cfg *config.Config, terminal, binPath string, args []string, dir string) error {
 	fullCmd := binPath
 	for _, a := range args {
 		fullCmd += " " + a
@@ -115,10 +144,11 @@ func launchTerminal(terminal, binPath string, args []string, dir string) error {
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = envForLaunch(cfg, binPath)
 	return cmd.Start()
 }
 
-func launchCustom(tmpl, binPath string, args []string, dir string) error {
+func launchCustom(cfg *config.Config, tmpl, binPath string, args []string, dir string) error {
 	fullCmd := binPath
 	for _, a := range args {
 		fullCmd += " " + a

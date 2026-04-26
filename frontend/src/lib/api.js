@@ -94,3 +94,13 @@ export async function testSSH(host, user, port) {
   });
   return res.json();
 }
+
+export async function startSecretScan() {
+  const res = await fetch("/api/scan-secrets", { method: "POST" });
+  return res.json();
+}
+
+export async function getScanStatus() {
+  const res = await fetch("/api/scan-secrets");
+  return res.json();
+}

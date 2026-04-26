@@ -8,8 +8,10 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"vibecockpit/internal/audit"
+	"vibecockpit/internal/scanner"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/sanitize"
 	"vibecockpit/internal/search"
@@ -130,6 +132,19 @@ func (s *Server) toolDefinitions() []map[string]any {
 				"required": []string{"session_id"},
 			},
 		},
+		{
+			"name":        "scan_secrets",
+			"description": "Scan all AI coding session files for leaked secrets (API keys, tokens, passwords, private keys). Uses 200+ gitleaks detection rules. Returns findings with redacted matches — never exposes the actual secret values.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{
+					"provider": map[string]any{
+						"type":        "string",
+						"description": "Scan only sessions from this provider. Omit for all.",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -172,6 +187,22 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		}
 		json.Unmarshal(call.Arguments, &args)
 		result, count = s.getSessionDetail(args.SessionID)
+
+	case "scan_secrets":
+		sc := scanner.New(s.providers)
+		sc.Start()
+		// Poll until done (max 120s)
+		deadline := time.Now().Add(120 * time.Second)
+		var status scanner.Status
+		for time.Now().Before(deadline) {
+			status = sc.GetStatus()
+			if status.State == "done" {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		result = status
+		count = status.FindingCount
 
 	default:
 		writeError(w, req.ID, -32602, fmt.Sprintf("Unknown tool: %s", call.Name))

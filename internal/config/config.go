@@ -18,8 +18,13 @@ type Config struct {
 	GroupBy       string            `yaml:"group_by,omitempty"`
 	Providers     []string                    `yaml:"providers,omitempty"`
 	ProviderPaths map[string]string          `yaml:"provider_paths,omitempty"`
-	PluginConfigs map[string]map[string]any  `yaml:"plugins,omitempty"`
-	RemoteSources []map[string]any           `yaml:"remote_sources,omitempty"`
+	PluginConfigs   map[string]map[string]any `yaml:"plugins,omitempty"`
+	RemoteSources   []map[string]any          `yaml:"remote_sources,omitempty"`
+	ExtraPath       []string                  `yaml:"extra_path,omitempty"`
+	EnableMCP       bool                      `yaml:"enable_mcp,omitempty"`
+	EnableScanner   bool                      `yaml:"enable_scanner,omitempty"`
+	ScanSkipRules   []string                  `yaml:"scan_skip_rules,omitempty"`
+	ScanExtraHints  []string                  `yaml:"scan_extra_hints,omitempty"`
 }
 
 var Models = []string{
