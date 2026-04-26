@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 310" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8f9fc"/><stop offset="100%" stop-color="#eef0f5"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity=".08"/><stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="720" height="310" rx="14" fill="url(#bg)" stroke="#d1d5db" stroke-width=".5"/>
+  <ellipse cx="360" cy="0" rx="280" ry="90" fill="url(#glow)"/>
+
+  <!-- Windshield arc -->
+  <path d="M50 290 Q50 30 360 12 Q670 30 670 290" stroke="#9ca3af" stroke-width="1.5" fill="none" opacity=".6"/>
+
+  <!-- HUD scan lines -->
+  <line x1="150" y1="100" x2="570" y2="100" stroke="#9ca3af" stroke-width=".4" stroke-dasharray="2 6" opacity=".4"/>
+  <line x1="130" y1="120" x2="590" y2="120" stroke="#9ca3af" stroke-width=".3" stroke-dasharray="2 8" opacity=".3"/>
+
+  <!-- Title -->
+  <text x="360" y="48" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="22" font-weight="700" fill="#1e293b">
+    <tspan fill="#7c3aed" font-size="24">&#9670;</tspan>  VibeCockpit
+  </text>
+  <text x="360" y="66" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#6b7280" letter-spacing="2">THE COCKPIT FOR YOUR COPILOTS</text>
+
+  <!-- Local / Remote indicators -->
+  <g font-family="system-ui,sans-serif" font-size="8">
+    <circle cx="240" cy="84" r="3" fill="#16a34a"/>
+    <text x="247" y="87" fill="#16a34a" font-weight="600">local auto-detect</text>
+    <text x="360" y="87" text-anchor="middle" fill="#9ca3af">|</text>
+    <circle cx="410" cy="84" r="3" fill="#6366f1"/>
+    <text x="417" y="87" fill="#6366f1" font-weight="600">remote via ssh</text>
+  </g>
+
+  <!-- ═══ Cockpit floor (very subtle) ═══ -->
+  <ellipse cx="360" cy="190" rx="250" ry="80" fill="none" stroke="#d1d5db" stroke-width=".5" opacity=".4"/>
+
+  <!-- ═══ Back row seats — 14px gaps, centered at 360 ═══ -->
+  <g font-family="system-ui,sans-serif">
+    <!-- Gemini -->
+    <rect x="169" y="130" width="52" height="38" rx="10" fill="white" stroke="#d97706" stroke-width=".6"/>
+    <rect x="179" y="123" width="32" height="10" rx="5" fill="#d97706" opacity=".25"/>
+    <circle cx="195" cy="144" r="4" fill="#d97706"/>
+    <text x="195" y="161" text-anchor="middle" font-size="6.5" fill="#6b7280" font-weight="500">Gemini</text>
+
+    <!-- Copilot -->
+    <rect x="235" y="130" width="52" height="38" rx="10" fill="white" stroke="#059669" stroke-width=".6"/>
+    <rect x="245" y="123" width="32" height="10" rx="5" fill="#059669" opacity=".25"/>
+    <circle cx="261" cy="144" r="4" fill="#059669"/>
+    <text x="261" y="161" text-anchor="middle" font-size="6.5" fill="#6b7280" font-weight="500">Copilot</text>
+
+    <!-- Placeholder -->
+    <rect x="301" y="130" width="52" height="38" rx="10" fill="none" stroke="#c7ccd6" stroke-width=".8" stroke-dasharray="4 3"/>
+    <text x="327" y="153" text-anchor="middle" font-size="12" fill="#9ca3af">+</text>
+
+    <!-- Placeholder -->
+    <rect x="367" y="130" width="52" height="38" rx="10" fill="none" stroke="#c7ccd6" stroke-width=".8" stroke-dasharray="4 3"/>
+    <text x="393" y="153" text-anchor="middle" font-size="12" fill="#9ca3af">+</text>
+
+    <!-- OpenCode -->
+    <rect x="433" y="130" width="52" height="38" rx="10" fill="white" stroke="#db2777" stroke-width=".6"/>
+    <rect x="443" y="123" width="32" height="10" rx="5" fill="#db2777" opacity=".25"/>
+    <circle cx="459" cy="144" r="4" fill="#db2777"/>
+    <text x="459" y="161" text-anchor="middle" font-size="6.5" fill="#6b7280" font-weight="500">OpenCode</text>
+
+    <!-- Hermes (remote — dashed) -->
+    <rect x="499" y="130" width="52" height="38" rx="10" fill="white" stroke="#6366f1" stroke-width=".8" stroke-dasharray="4 2"/>
+    <rect x="509" y="123" width="32" height="10" rx="5" fill="#6366f1" opacity=".25"/>
+    <circle cx="525" cy="144" r="4" fill="#6366f1"/>
+    <text x="525" y="161" text-anchor="middle" font-size="6.5" fill="#6b7280" font-weight="500">Hermes</text>
+  </g>
+
+  <!-- ═══ Front row — 20px gaps, centered at 360 ═══ -->
+  <g font-family="system-ui,sans-serif">
+    <!-- Claude -->
+    <rect x="243" y="188" width="60" height="44" rx="12" fill="white" stroke="#7c3aed" stroke-width="1"/>
+    <rect x="256" y="180" width="34" height="11" rx="5.5" fill="#7c3aed" opacity=".25"/>
+    <circle cx="273" cy="204" r="5" fill="#7c3aed"/>
+    <text x="273" y="224" text-anchor="middle" font-size="7" font-weight="600" fill="#6b7280">Claude</text>
+
+    <!-- ★ Captain (YOU) ★ -->
+    <rect x="323" y="182" width="74" height="56" rx="14" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="339" y="172" width="42" height="14" rx="7" fill="#475569" opacity=".15"/>
+    <rect x="345" y="174" width="30" height="10" rx="5" fill="#475569" opacity=".25"/>
+    <text x="360" y="207" text-anchor="middle" font-size="10" font-weight="700" fill="#334155">YOU</text>
+    <text x="360" y="220" text-anchor="middle" font-size="7" fill="#64748b" font-weight="500">captain</text>
+    <text x="360" y="232" text-anchor="middle" font-size="5.5" fill="#6b7280">in control</text>
+
+    <!-- Codex -->
+    <rect x="417" y="188" width="60" height="44" rx="12" fill="white" stroke="#0284c7" stroke-width="1"/>
+    <rect x="430" y="180" width="34" height="11" rx="5.5" fill="#0284c7" opacity=".25"/>
+    <circle cx="447" cy="204" r="5" fill="#0284c7"/>
+    <text x="447" y="224" text-anchor="middle" font-size="7" font-weight="600" fill="#6b7280">Codex</text>
+  </g>
+
+  <!-- Yoke -->
+  <line x1="360" y1="238" x2="360" y2="248" stroke="#9ca3af" stroke-width=".6"/>
+  <ellipse cx="360" cy="250" rx="14" ry="5.5" fill="none" stroke="#9ca3af" stroke-width="1"/>
+  <circle cx="353" cy="250" r="1.2" fill="#9ca3af"/>
+  <circle cx="367" cy="250" r="1.2" fill="#9ca3af"/>
+
+  <!-- Instrument panel LEDs (between windshield and seats) -->
+  <circle cx="280" cy="108" r="1.5" fill="#22c55e" opacity=".8"/>
+  <circle cx="288" cy="108" r="1.5" fill="#22c55e" opacity=".5"/>
+  <circle cx="296" cy="108" r="1.5" fill="#f59e0b" opacity=".6"/>
+  <circle cx="420" cy="108" r="1.5" fill="#3b82f6" opacity=".7"/>
+  <circle cx="428" cy="108" r="1.5" fill="#3b82f6" opacity=".4"/>
+  <circle cx="436" cy="108" r="1.5" fill="#22c55e" opacity=".6"/>
+
+  <!-- ═══ Feature pills — 10px gaps, centered at 360 ═══ -->
+  <g font-family="system-ui,sans-serif" font-size="8">
+    <rect x="121" y="272" width="80" height="18" rx="9" fill="#f5f3ff" stroke="#7c3aed" stroke-width=".6"/>
+    <text x="161" y="284" text-anchor="middle" fill="#7c3aed" font-weight="600">fuzzy search</text>
+
+    <rect x="211" y="272" width="62" height="18" rx="9" fill="#eff6ff" stroke="#3b82f6" stroke-width=".6"/>
+    <text x="242" y="284" text-anchor="middle" fill="#3b82f6" font-weight="600">ssh scan</text>
+
+    <rect x="283" y="272" width="64" height="18" rx="9" fill="#fdf2f8" stroke="#ec4899" stroke-width=".6"/>
+    <text x="315" y="284" text-anchor="middle" fill="#ec4899" font-weight="600">web + tui</text>
+
+    <rect x="357" y="272" width="58" height="18" rx="9" fill="#fefce8" stroke="#ca8a04" stroke-width=".6"/>
+    <text x="386" y="284" text-anchor="middle" fill="#ca8a04" font-weight="600">plugins</text>
+
+    <rect x="425" y="272" width="82" height="18" rx="9" fill="#f0fdf4" stroke="#16a34a" stroke-width=".6"/>
+    <text x="466" y="284" text-anchor="middle" fill="#16a34a" font-weight="600">linux + macos</text>
+
+    <rect x="517" y="272" width="82" height="18" rx="9" fill="#f8fafc" stroke="#64748b" stroke-width=".6"/>
+    <text x="558" y="284" text-anchor="middle" fill="#64748b" font-weight="600">open source</text>
+  </g>
+</svg>

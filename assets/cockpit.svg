@@ -1,0 +1,217 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 460" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8f9fc"/><stop offset="100%" stop-color="#eef0f6"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity=".08"/><stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="460" rx="16" fill="url(#bg)" stroke="#d1d5db" stroke-width="1"/>
+  <ellipse cx="400" cy="0" rx="300" ry="100" fill="url(#glow)"/>
+
+  <!-- Cockpit windshield arc -->
+  <path d="M80 420 Q80 50 400 30 Q720 50 720 420" stroke="#c7c9d4" stroke-width="1.5" fill="none" opacity=".5"/>
+
+  <!-- Title -->
+  <text x="400" y="68" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="28" font-weight="700" fill="#1f2937" letter-spacing=".5">
+    <tspan fill="#7c3aed" font-size="30">&#9670;</tspan>  VibeCockpit
+  </text>
+  <text x="400" y="90" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280" letter-spacing="2">
+    THE COCKPIT FOR YOUR COPILOTS
+  </text>
+
+  <!-- ═══ Instrument Panel (cards) ═══ -->
+
+  <!-- Card 1: Claude Code -->
+  <g transform="translate(110,115)">
+    <rect width="100" height="120" rx="10" fill="white" stroke="#e2e5eb"/>
+    <circle cx="16" cy="16" r="5" fill="#7c3aed"/>
+    <text x="28" y="20" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#1f2937">Claude Code</text>
+    <rect x="15" y="30" width="70" height="5" rx="2.5" fill="#eef0f6"/>
+    <rect x="15" y="30" width="56" height="5" rx="2.5" fill="url(#gc)"/>
+    <text x="50" y="57" text-anchor="middle" font-family="monospace" font-size="24" font-weight="700" fill="#1f2937">27</text>
+    <text x="50" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" fill="#6b7280">sessions</text>
+    <rect x="25" y="80" width="50" height="13" rx="4" fill="#f0fdf4"/>
+    <text x="50" y="89" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#16a34a" font-weight="500">cli</text>
+    <circle cx="34" cy="106" r="3" fill="#059669"/>
+    <text x="42" y="109" font-family="system-ui,sans-serif" font-size="7" fill="#059669">4 active</text>
+  </g>
+
+  <!-- Card 2: Codex CLI -->
+  <g transform="translate(230,115)">
+    <rect width="100" height="120" rx="10" fill="white" stroke="#e2e5eb"/>
+    <circle cx="16" cy="16" r="5" fill="#0284c7"/>
+    <text x="28" y="20" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#1f2937">Codex CLI</text>
+    <rect x="15" y="30" width="70" height="5" rx="2.5" fill="#eef0f6"/>
+    <rect x="15" y="30" width="30" height="5" rx="2.5" fill="#0284c7"/>
+    <text x="50" y="57" text-anchor="middle" font-family="monospace" font-size="24" font-weight="700" fill="#1f2937">14</text>
+    <text x="50" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" fill="#6b7280">sessions</text>
+    <rect x="25" y="80" width="50" height="13" rx="4" fill="#f0fdf4"/>
+    <text x="50" y="89" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#16a34a" font-weight="500">cli</text>
+    <text x="50" y="109" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#6b7280">gpt-5.4</text>
+  </g>
+
+  <!-- Card 3: Gemini CLI -->
+  <g transform="translate(350,115)">
+    <rect width="100" height="120" rx="10" fill="white" stroke="#e2e5eb"/>
+    <circle cx="16" cy="16" r="5" fill="#d97706"/>
+    <text x="28" y="20" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#1f2937">Gemini CLI</text>
+    <rect x="15" y="30" width="70" height="5" rx="2.5" fill="#eef0f6"/>
+    <rect x="15" y="30" width="62" height="5" rx="2.5" fill="#d97706"/>
+    <text x="50" y="57" text-anchor="middle" font-family="monospace" font-size="24" font-weight="700" fill="#1f2937">41</text>
+    <text x="50" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" fill="#6b7280">sessions</text>
+    <rect x="25" y="80" width="50" height="13" rx="4" fill="#f0fdf4"/>
+    <text x="50" y="89" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#16a34a" font-weight="500">cli</text>
+    <text x="50" y="109" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#6b7280">gemini</text>
+  </g>
+
+  <!-- Card 4: Copilot CLI -->
+  <g transform="translate(470,115)">
+    <rect width="100" height="120" rx="10" fill="white" stroke="#e2e5eb"/>
+    <circle cx="16" cy="16" r="5" fill="#059669"/>
+    <text x="28" y="20" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#1f2937">Copilot CLI</text>
+    <rect x="15" y="30" width="70" height="5" rx="2.5" fill="#eef0f6"/>
+    <rect x="15" y="30" width="5" height="5" rx="2.5" fill="#059669"/>
+    <text x="50" y="57" text-anchor="middle" font-family="monospace" font-size="24" font-weight="700" fill="#1f2937">2</text>
+    <text x="50" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" fill="#6b7280">sessions</text>
+    <rect x="25" y="80" width="50" height="13" rx="4" fill="#f0fdf4"/>
+    <text x="50" y="89" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#16a34a" font-weight="500">cli</text>
+    <text x="50" y="109" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#6b7280">gpt-5-mini</text>
+  </g>
+
+  <!-- Card 5: Hermes (Agent, Remote) -->
+  <g transform="translate(590,115)">
+    <rect width="100" height="120" rx="10" fill="white" stroke="#bfdbfe" stroke-dasharray="4 2"/>
+    <circle cx="16" cy="16" r="5" fill="#6366f1"/>
+    <text x="28" y="20" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#1f2937">Hermes</text>
+    <rect x="15" y="30" width="70" height="5" rx="2.5" fill="#eef0f6"/>
+    <rect x="15" y="30" width="10" height="5" rx="2.5" fill="#6366f1"/>
+    <text x="50" y="57" text-anchor="middle" font-family="monospace" font-size="24" font-weight="700" fill="#1f2937">1</text>
+    <text x="50" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" fill="#6b7280">sessions</text>
+    <rect x="18" y="80" width="30" height="13" rx="4" fill="#fef3c7"/>
+    <text x="33" y="89" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#d97706" font-weight="500">agent</text>
+    <rect x="52" y="80" width="32" height="13" rx="4" fill="#eff6ff"/>
+    <text x="68" y="89" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#2563eb" font-weight="500">remote</text>
+    <text x="50" y="109" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" fill="#6b7280">qwen 3.6</text>
+  </g>
+
+  <!-- ═══ Local / Remote banner ═══ -->
+  <rect x="108" y="240" width="584" height="22" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width=".5"/>
+  <circle cx="165" cy="251" r="3" fill="#16a34a"/>
+  <text x="173" y="255" font-family="system-ui,sans-serif" font-size="7.5" fill="#16a34a" font-weight="500">local</text>
+  <text x="196" y="255" font-family="system-ui,sans-serif" font-size="7" fill="#94a3b8">~/.claude  ~/.codex  ~/.copilot  ~/.gemini  ~/.local/share/opencode</text>
+  <line x1="488" y1="244" x2="488" y2="258" stroke="#e2e8f0" stroke-width=".5"/>
+  <circle cx="500" cy="251" r="3" fill="#6366f1"/>
+  <text x="508" y="255" font-family="system-ui,sans-serif" font-size="7.5" fill="#6366f1" font-weight="500">remote</text>
+  <text x="542" y="255" font-family="system-ui,sans-serif" font-size="7" fill="#94a3b8">ssh + agents</text>
+
+  <!-- ═══ Capability pills (centered, evenly spaced) ═══ -->
+  <!-- 6 pills, each ~70px avg, 8px gap, total ~460px → start at (800-460)/2 = 170 -->
+  <g font-family="system-ui,sans-serif" font-size="7.5">
+    <rect x="177" y="272" width="72" height="16" rx="8" fill="#f5f3ff" stroke="#ddd6fe" stroke-width=".5"/>
+    <text x="213" y="283" text-anchor="middle" fill="#7c3aed" font-weight="500">fuzzy search</text>
+
+    <rect x="257" y="272" width="62" height="16" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width=".5"/>
+    <text x="288" y="283" text-anchor="middle" fill="#2563eb" font-weight="500">ssh scan</text>
+
+    <rect x="327" y="272" width="60" height="16" rx="8" fill="#fdf2f8" stroke="#fbcfe8" stroke-width=".5"/>
+    <text x="357" y="283" text-anchor="middle" fill="#db2777" font-weight="500">web + tui</text>
+
+    <rect x="395" y="272" width="55" height="16" rx="8" fill="#fefce8" stroke="#fef08a" stroke-width=".5"/>
+    <text x="422" y="283" text-anchor="middle" fill="#ca8a04" font-weight="500">plugins</text>
+
+    <rect x="458" y="272" width="75" height="16" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width=".5"/>
+    <text x="495" y="283" text-anchor="middle" fill="#16a34a" font-weight="500">linux + macos</text>
+
+    <rect x="541" y="272" width="82" height="16" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width=".5"/>
+    <text x="582" y="283" text-anchor="middle" fill="#64748b" font-weight="500">open source</text>
+  </g>
+
+  <!-- ═══ Cockpit Seats (top-down view) ═══ -->
+  <!-- Floor -->
+  <rect x="180" y="305" width="440" height="140" rx="40" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="1" opacity=".6"/>
+  <!-- Center console -->
+  <rect x="375" y="320" width="50" height="60" rx="6" fill="#e2e8f0" opacity=".5"/>
+  <text x="400" y="355" text-anchor="middle" font-family="system-ui,sans-serif" font-size="6" fill="#94a3b8" letter-spacing=".5">CONSOLE</text>
+
+  <!-- Captain's seat (you) — center front, bigger -->
+  <g transform="translate(370,385)">
+    <rect x="0" y="0" width="60" height="45" rx="12" fill="white" stroke="#7c3aed" stroke-width="1.5"/>
+    <rect x="10" y="-10" width="40" height="14" rx="7" fill="#7c3aed" opacity=".15"/>
+    <rect x="15" y="-8" width="30" height="10" rx="5" fill="#7c3aed" opacity=".25"/>
+    <text x="30" y="22" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7" font-weight="600" fill="#7c3aed">YOU</text>
+    <text x="30" y="32" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5.5" fill="#94a3b8">captain</text>
+  </g>
+
+  <!-- Copilot seats — flanking the captain, slightly forward -->
+  <!-- Seat: Claude (left of captain) -->
+  <g transform="translate(280,375)">
+    <rect x="0" y="0" width="48" height="38" rx="10" fill="white" stroke="#7c3aed" stroke-width="1"/>
+    <rect x="8" y="-8" width="32" height="11" rx="5.5" fill="#7c3aed" opacity=".2"/>
+    <circle cx="24" cy="14" r="4" fill="#7c3aed"/>
+    <text x="24" y="30" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5.5" fill="#6b7280">Claude</text>
+  </g>
+
+  <!-- Seat: Codex (right of captain) -->
+  <g transform="translate(472,375)">
+    <rect x="0" y="0" width="48" height="38" rx="10" fill="white" stroke="#0284c7" stroke-width="1"/>
+    <rect x="8" y="-8" width="32" height="11" rx="5.5" fill="#0284c7" opacity=".2"/>
+    <circle cx="24" cy="14" r="4" fill="#0284c7"/>
+    <text x="24" y="30" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5.5" fill="#6b7280">Codex</text>
+  </g>
+
+  <!-- Back row seats -->
+  <!-- Seat: Gemini -->
+  <g transform="translate(210,325)">
+    <rect x="0" y="0" width="42" height="34" rx="9" fill="white" stroke="#d97706" stroke-width=".8"/>
+    <rect x="7" y="-7" width="28" height="10" rx="5" fill="#d97706" opacity=".2"/>
+    <circle cx="21" cy="12" r="3.5" fill="#d97706"/>
+    <text x="21" y="27" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5" fill="#6b7280">Gemini</text>
+  </g>
+
+  <!-- Seat: Copilot -->
+  <g transform="translate(268,325)">
+    <rect x="0" y="0" width="42" height="34" rx="9" fill="white" stroke="#059669" stroke-width=".8"/>
+    <rect x="7" y="-7" width="28" height="10" rx="5" fill="#059669" opacity=".2"/>
+    <circle cx="21" cy="12" r="3.5" fill="#059669"/>
+    <text x="21" y="27" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5" fill="#6b7280">Copilot</text>
+  </g>
+
+  <!-- Seat: OpenCode -->
+  <g transform="translate(490,325)">
+    <rect x="0" y="0" width="42" height="34" rx="9" fill="white" stroke="#db2777" stroke-width=".8"/>
+    <rect x="7" y="-7" width="28" height="10" rx="5" fill="#db2777" opacity=".2"/>
+    <circle cx="21" cy="12" r="3.5" fill="#db2777"/>
+    <text x="21" y="27" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5" fill="#6b7280">OpenCode</text>
+  </g>
+
+  <!-- Seat: Hermes (dashed = remote) -->
+  <g transform="translate(548,325)">
+    <rect x="0" y="0" width="42" height="34" rx="9" fill="white" stroke="#6366f1" stroke-width=".8" stroke-dasharray="3 2"/>
+    <rect x="7" y="-7" width="28" height="10" rx="5" fill="#6366f1" opacity=".2"/>
+    <circle cx="21" cy="12" r="3.5" fill="#6366f1"/>
+    <text x="21" y="27" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5" fill="#6b7280">Hermes</text>
+  </g>
+
+  <!-- Empty placeholder seats (future tools/agents) -->
+  <g transform="translate(330,325)">
+    <rect x="0" y="0" width="42" height="34" rx="9" fill="none" stroke="#d1d5db" stroke-width=".8" stroke-dasharray="3 3"/>
+    <text x="21" y="15" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#d1d5db">+</text>
+    <text x="21" y="27" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5" fill="#d1d5db">your tool</text>
+  </g>
+
+  <g transform="translate(440,325)">
+    <rect x="0" y="0" width="42" height="34" rx="9" fill="none" stroke="#d1d5db" stroke-width=".8" stroke-dasharray="3 3"/>
+    <text x="21" y="15" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#d1d5db">+</text>
+    <text x="21" y="27" text-anchor="middle" font-family="system-ui,sans-serif" font-size="5" fill="#d1d5db">your agent</text>
+  </g>
+
+  <!-- Tiny yoke/steering between captain and console -->
+  <ellipse cx="400" cy="382" rx="12" ry="6" fill="none" stroke="#cbd5e1" stroke-width=".8"/>
+</svg>
