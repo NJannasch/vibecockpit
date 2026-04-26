@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/Svelte-5-ff3e00?style=flat-square&logo=svelte&logoColor=white" alt="Svelte">
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS-lightgrey?style=flat-square" alt="Platforms">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License"></a>
+  <a href="https://vibecockpit.dev"><img src="https://img.shields.io/badge/Website-vibecockpit.dev-7c3aed?style=flat-square" alt="Website"></a>
 </p>
 
 ---
