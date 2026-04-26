@@ -93,3 +93,27 @@ jobs:
         with:
           generate_release_notes: true
           files: dist/*
+          body: |
+            ## Install / Upgrade
+
+            One-liner — installs fresh or upgrades an existing install in place:
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
+            ```
+
+            <details>
+            <summary>Other options</summary>
+
+            ```bash
+            # Specific version
+            VERSION=${{ github.ref_name }} curl -fsSL https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
+
+            # Custom prefix
+            PREFIX=/opt curl -fsSL https://raw.githubusercontent.com/NJannasch/vibecockpit/main/install.sh | bash
+
+            # Or grab a binary directly from the assets below.
+            ```
+            </details>
+
+            ---
