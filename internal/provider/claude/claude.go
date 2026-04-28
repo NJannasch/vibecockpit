@@ -248,6 +248,7 @@ func scanProjectFromJSONL(projPath string, dirName string, active map[string]int
 			projectPath = decodeProjectDir(dirName)
 		}
 
+		stats := scanJSONLStats(jsonlPath)
 		s := provider.Session{
 			ID:           sessionID,
 			Provider:     "claude",
@@ -256,7 +257,8 @@ func scanProjectFromJSONL(projPath string, dirName string, active map[string]int
 			FirstPrompt:  meta.firstPrompt,
 			Model:        model,
 			GitBranch:    meta.gitBranch,
-			MessageCount: countJSONLMessages(jsonlPath),
+			MessageCount: stats.messageCount,
+			Tokens:       stats.tokens,
 			Modified:     fi.ModTime(),
 			Created:      meta.created,
 			DataPath:     jsonlPath,
@@ -272,25 +274,52 @@ func scanProjectFromJSONL(projPath string, dirName string, active map[string]int
 	return sessions
 }
 
-func countJSONLMessages(path string) int {
+type sessionStats struct {
+	messageCount int
+	tokens       provider.TokenUsage
+}
+
+func scanJSONLStats(path string) sessionStats {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0
+		return sessionStats{}
 	}
 	defer f.Close()
 
-	count := 0
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 256*1024), 256*1024)
+	var stats sessionStats
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 256*1024), 256*1024)
 	userTag := []byte(`"type":"user"`)
 	assistantTag := []byte(`"type":"assistant"`)
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	usageTag := []byte(`"usage"`)
+
+	for sc.Scan() {
+		line := sc.Bytes()
 		if bytes.Contains(line, userTag) || bytes.Contains(line, assistantTag) {
-			count++
+			stats.messageCount++
+		}
+		if bytes.Contains(line, assistantTag) && bytes.Contains(line, usageTag) {
+			var entry struct {
+				Message struct {
+					Usage struct {
+						InputTokens            int64 `json:"input_tokens"`
+						OutputTokens           int64 `json:"output_tokens"`
+						CacheReadInputTokens   int64 `json:"cache_read_input_tokens"`
+						CacheCreationTokens    int64 `json:"cache_creation_input_tokens"`
+					} `json:"usage"`
+				} `json:"message"`
+			}
+			if json.Unmarshal(line, &entry) == nil {
+				u := entry.Message.Usage
+				stats.tokens.InputTokens += u.InputTokens
+				stats.tokens.OutputTokens += u.OutputTokens
+				stats.tokens.CacheReadTokens += u.CacheReadInputTokens
+				stats.tokens.CacheWriteTokens += u.CacheCreationTokens
+				stats.tokens.TotalTokens += u.InputTokens + u.OutputTokens
+			}
 		}
 	}
-	return count
+	return stats
 }
 
 func extractModelFromTail(path string) string {

@@ -18,6 +18,7 @@
   import { saveConfig, launchSession, deleteSession, createProject as apiCreateProject, testSSH, startSecretScan, getScanStatus } from "./lib/api.js";
   import { shortModel, relativeTime, providerColors, providerLabels, getProviderType, dateGroup } from "./lib/utils.js";
   import Dashboard from "./components/Dashboard.svelte";
+  import CostsDashboard from "./components/CostsDashboard.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
 
@@ -94,9 +95,13 @@
 
   // ─── Init + Refresh ───
 
+  let scanDurationMs = $state(0);
+
   async function refresh(force = true) {
     scanning = true;
+    const start = performance.now();
     await loadSessions(force);
+    scanDurationMs = Math.round(performance.now() - start);
     lastScanned = new Date();
     scanning = false;
   }
@@ -614,6 +619,7 @@
   <nav class="header-nav">
     <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
     <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
+    <button class="nav-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>Costs</button>
     {#if configData.enableScanner}
       <button class="nav-btn" class:active={page === "security"} onclick={() => navigateTo("security")}>Security</button>
     {/if}
@@ -633,7 +639,24 @@
   </div>
 </header>
 
-{#if page === "dashboard"}
+{#if !lastScanned && scanning}
+  <main>
+    <div style="max-width:800px;margin:3rem auto;padding:0 1rem">
+      <div class="skeleton">
+        <div style="font-size:1.5rem;color:var(--primary);margin-bottom:.5rem">&#9670;</div>
+        <div style="font-size:.95rem;font-weight:500;margin-bottom:.3rem">Scanning your AI coding tools...</div>
+        <div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:1.5rem">Detecting sessions from Claude, Codex, Copilot, Gemini, OpenCode</div>
+        <div class="skeleton-grid">
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+{:else if page === "dashboard"}
   <main>
     <Dashboard
       sessions={sessionList}
@@ -833,6 +856,13 @@
                 {#if s.gitBranch}<span>{s.gitBranch}</span>{/if}
                 {#if s.messageCount}<span>{s.messageCount} msgs</span>{/if}
                 {#if s.isActive}<span class="badge badge-active">active</span>{/if}
+                {#if s.estCostUsd > 0.01}
+                  <span class="cost-badge {s.tokens?.inputTokens ? 'cost-badge-value' : 'cost-badge-estimate'}">
+                    {s.tokens?.inputTokens ? "$" : "~$"}{s.estCostUsd.toFixed(2)}
+                  </span>
+                {:else if s.provider?.startsWith("remote-")}
+                  <span class="cost-badge cost-badge-remote">remote</span>
+                {/if}
               </div>
               <div class="card-time">{relativeTime(s.modified)}</div>
               <div class="card-actions">
@@ -877,6 +907,13 @@
             {#if s.gitBranch}<span>{s.gitBranch}</span>{/if}
             {#if s.messageCount}<span>{s.messageCount} msgs</span>{/if}
             {#if s.isActive}<span class="badge badge-active">active</span>{/if}
+            {#if s.estCostUsd > 0.01}
+              <span class="cost-badge {s.tokens?.inputTokens ? 'cost-badge-value' : 'cost-badge-estimate'}">
+                {s.tokens?.inputTokens ? "$" : "~$"}{s.estCostUsd.toFixed(2)}
+              </span>
+            {:else if s.provider?.startsWith("remote-")}
+              <span class="cost-badge cost-badge-remote">remote</span>
+            {/if}
           </div>
           <div class="card-time">{relativeTime(s.modified)}</div>
           <div class="card-actions">
@@ -895,6 +932,10 @@
     </div>
   {/if}
 </main>
+{:else if page === "costs"}
+  <main>
+    <CostsDashboard sessions={sessionList} />
+  </main>
 {:else if page === "security"}
   <main>
     {@render securityPage()}
@@ -1018,6 +1059,18 @@
       {#if settingsSaved}
         <span class="settings-saved">Saved</span>
       {/if}
+    </div>
+
+    <!-- Status -->
+    <div class="settings-card" style="background:var(--bg)">
+      <h3 class="settings-section">Status</h3>
+      <div style="display:flex;gap:1.5rem;font-size:.82rem;flex-wrap:wrap">
+        <div><span style="color:var(--text-secondary)">Sessions:</span> <b>{sessionList.length}</b></div>
+        <div><span style="color:var(--text-secondary)">Providers:</span> <b>{[...new Set(sessionList.map(s => s.provider))].length}</b></div>
+        <div><span style="color:var(--text-secondary)">Last scan:</span> <b>{lastScanned ? relativeTime(lastScanned.toISOString()) : "never"}</b></div>
+        <div><span style="color:var(--text-secondary)">Scan time:</span> <b>{scanDurationMs > 1000 ? (scanDurationMs / 1000).toFixed(1) + "s" : scanDurationMs + "ms"}</b></div>
+        <div><span style="color:var(--text-secondary)">Version:</span> <b>{versionInfo?.current || "?"}</b></div>
+      </div>
     </div>
 
     <!-- General -->

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"vibecockpit/internal/config"
+	"vibecockpit/internal/costs"
 	"vibecockpit/internal/launcher"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/scanner"
@@ -42,18 +43,20 @@ type server struct {
 }
 
 type apiSession struct {
-	ID           string `json:"id"`
-	Provider     string `json:"provider"`
-	ProjectName  string `json:"projectName"`
-	ProjectPath  string `json:"projectPath"`
-	Summary      string `json:"summary"`
-	FirstPrompt  string `json:"firstPrompt"`
-	Model        string `json:"model"`
-	GitBranch    string `json:"gitBranch"`
-	MessageCount int    `json:"messageCount"`
-	Modified     string `json:"modified,omitempty"`
-	Created      string `json:"created,omitempty"`
-	IsActive     bool   `json:"isActive"`
+	ID           string              `json:"id"`
+	Provider     string              `json:"provider"`
+	ProjectName  string              `json:"projectName"`
+	ProjectPath  string              `json:"projectPath"`
+	Summary      string              `json:"summary"`
+	FirstPrompt  string              `json:"firstPrompt"`
+	Model        string              `json:"model"`
+	GitBranch    string              `json:"gitBranch"`
+	MessageCount int                 `json:"messageCount"`
+	Tokens       provider.TokenUsage `json:"tokens,omitempty"`
+	EstCostUSD   float64             `json:"estCostUsd,omitempty"`
+	Modified     string              `json:"modified,omitempty"`
+	Created      string              `json:"created,omitempty"`
+	IsActive     bool                `json:"isActive"`
 	ActivePID    int    `json:"activePID,omitempty"`
 }
 
@@ -103,6 +106,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("POST /api/test-ssh", s.handleTestSSH)
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("PUT /api/config", s.handlePutConfig)
+	mux.HandleFunc("GET /api/costs", s.handleCosts)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
@@ -255,6 +259,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]apiSession, 0, len(all))
 	for _, sess := range all {
+		estCost := costs.EstimateCost(sess.Model, sess.Tokens)
 		as := apiSession{
 			ID:           sess.ID,
 			Provider:     sess.Provider,
@@ -265,6 +270,8 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Model:        sess.Model,
 			GitBranch:    sess.GitBranch,
 			MessageCount: sess.MessageCount,
+			Tokens:       sess.Tokens,
+			EstCostUSD:   estCost,
 			IsActive:     sess.IsActive,
 			ActivePID:    sess.ActivePID,
 		}
@@ -575,6 +582,32 @@ type versionResponse struct {
 	Latest          string `json:"latest,omitempty"`
 	UpdateAvailable bool   `json:"updateAvailable"`
 	ReleaseURL      string `json:"releaseUrl,omitempty"`
+}
+
+func (s *server) handleCosts(w http.ResponseWriter, r *http.Request) {
+	days := 30
+	if d := r.URL.Query().Get("days"); d != "" {
+		if n, err := strconv.Atoi(d); err == nil && n > 0 {
+			days = n
+		}
+	}
+	since := time.Now().AddDate(0, 0, -days)
+
+	var all []provider.Session
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		for i := range sessions {
+			sessions[i].EstCostUSD = costs.EstimateCost(sessions[i].Model, sessions[i].Tokens)
+		}
+		all = append(all, sessions...)
+	}
+
+	summary := costs.Aggregate(all, since)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
 }
 
 func (s *server) handleStartScan(w http.ResponseWriter, r *http.Request) {

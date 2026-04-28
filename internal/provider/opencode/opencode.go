@@ -86,6 +86,7 @@ func (o *OpenCode) ScanSessions(ctx context.Context) ([]provider.Session, error)
 			projectPath = worktree.String
 		}
 
+		tokens := extractTokens(lastAssistantData)
 		s := provider.Session{
 			ID:           id.String,
 			Provider:     "opencode",
@@ -95,6 +96,7 @@ func (o *OpenCode) ScanSessions(ctx context.Context) ([]provider.Session, error)
 			Model:        extractModel(lastAssistantData),
 			FirstPrompt:  extractPrompt(firstUserData),
 			MessageCount: msgCount,
+			Tokens:       tokens,
 		}
 
 		if timeCreated.Valid {
@@ -171,6 +173,35 @@ func extractModel(data sql.NullString) string {
 		return pid + "/" + mid
 	}
 	return mid
+}
+
+func extractTokens(data sql.NullString) provider.TokenUsage {
+	if !data.Valid {
+		return provider.TokenUsage{}
+	}
+	var msg struct {
+		Tokens struct {
+			Input     int64 `json:"input"`
+			Output    int64 `json:"output"`
+			Reasoning int64 `json:"reasoning"`
+			Cache     struct {
+				Read  int64 `json:"read"`
+				Write int64 `json:"write"`
+			} `json:"cache"`
+		} `json:"tokens"`
+	}
+	if json.Unmarshal([]byte(data.String), &msg) != nil {
+		return provider.TokenUsage{}
+	}
+	t := msg.Tokens
+	return provider.TokenUsage{
+		InputTokens:      t.Input,
+		OutputTokens:     t.Output,
+		CacheReadTokens:  t.Cache.Read,
+		CacheWriteTokens: t.Cache.Write,
+		ReasoningTokens:  t.Reasoning,
+		TotalTokens:      t.Input + t.Output + t.Reasoning,
+	}
 }
 
 func extractPrompt(data sql.NullString) string {

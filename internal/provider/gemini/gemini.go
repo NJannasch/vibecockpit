@@ -121,6 +121,15 @@ type message struct {
 	Content   string     `json:"content"`
 	Model     string     `json:"model,omitempty"`
 	ToolCalls []toolCall `json:"toolCalls,omitempty"`
+	Tokens    *msgTokens `json:"tokens,omitempty"`
+}
+
+type msgTokens struct {
+	Input    int64 `json:"input"`
+	Output   int64 `json:"output"`
+	Cached   int64 `json:"cached"`
+	Thoughts int64 `json:"thoughts"`
+	Total    int64 `json:"total"`
 }
 
 type toolCall struct {
@@ -143,6 +152,7 @@ func (g *Gemini) parseSession(path, dirName, projectPath string) (*provider.Sess
 	modified, _ := time.Parse(time.RFC3339Nano, sf.LastUpdated)
 
 	var firstPrompt, model string
+	var tokens provider.TokenUsage
 	msgCount := 0
 
 	for _, m := range sf.Messages {
@@ -157,6 +167,13 @@ func (g *Gemini) parseSession(path, dirName, projectPath string) (*provider.Sess
 		}
 		if m.Model != "" {
 			model = m.Model
+		}
+		if m.Tokens != nil {
+			tokens.InputTokens += m.Tokens.Input
+			tokens.OutputTokens += m.Tokens.Output
+			tokens.CacheReadTokens += m.Tokens.Cached
+			tokens.ReasoningTokens += m.Tokens.Thoughts
+			tokens.TotalTokens += m.Tokens.Total
 		}
 		if projectPath == "" {
 			projectPath = extractPathFromMessage(m)
@@ -180,6 +197,7 @@ func (g *Gemini) parseSession(path, dirName, projectPath string) (*provider.Sess
 		FirstPrompt:  firstPrompt,
 		Model:        model,
 		MessageCount: msgCount,
+		Tokens:       tokens,
 		Created:      created,
 		Modified:     modified,
 	}, nil

@@ -146,9 +146,29 @@ header{
 .match-hl{color:var(--primary);font-weight:600}
 
 /* ─── Main ─── */
-main{flex:1;padding:1.5rem 2rem 3rem}
+main{flex:1;padding:1.5rem 2rem 3rem;animation:pageIn .2s ease}
+@keyframes pageIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .empty{text-align:center;padding:4rem 1rem;color:var(--text-secondary)}
 .empty h3{font-size:1.1rem;color:var(--text);margin-bottom:.5rem}
+
+/* ─── Loading Skeleton ─── */
+.skeleton{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;text-align:center;color:var(--text-secondary)}
+.skeleton-bar{height:12px;border-radius:6px;background:var(--surface-active);animation:shimmer 1.5s infinite}
+.skeleton-bar-sm{height:8px;width:60%;margin:0 auto}
+.skeleton-bar-lg{height:16px;width:80%;margin:0 auto}
+@keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
+.skeleton-grid{display:flex;gap:.6rem;justify-content:center;margin-top:1rem}
+.skeleton-card{width:100px;height:70px;border-radius:var(--radius-sm);background:var(--surface-active);animation:shimmer 1.5s infinite}
+
+/* ─── Cost Badge ─── */
+.cost-badge{
+  display:inline-flex;align-items:center;gap:.2rem;
+  font-size:.65rem;font-weight:500;padding:.1rem .35rem;
+  border-radius:4px;white-space:nowrap;
+}
+.cost-badge-value{background:rgba(22,163,98,.08);color:#059669;border:1px solid rgba(22,163,98,.15)}
+.cost-badge-estimate{background:rgba(234,179,8,.08);color:#ca8a04;border:1px solid rgba(234,179,8,.15)}
+.cost-badge-remote{background:var(--surface-active);color:var(--text-secondary);border:1px solid var(--border)}
 
 /* ─── Settings Page ─── */
 .settings-page{max-width:680px;margin:1.5rem auto;padding:0 1rem}

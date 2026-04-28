@@ -58,6 +58,7 @@ That's it. VibeCockpit auto-detects which tools you have installed and shows all
 ## Features
 
 - **Dashboard** — overview of all tools with session counts, active indicators, and recent activity
+- **Cost tracking** — see what your AI coding tools cost you across all providers. Heatmap, trend charts, per-project breakdown, and plan recommendations that tell you which subscription tier actually fits your usage
 - **Fuzzy search** — type `hermes` or `model:opus branch:main active` to find anything
 - **Filter chips** — click to filter by tool, model, or active status
 - **Group by** tool, project, or date — collapsible sections
@@ -169,6 +170,29 @@ VibeCockpit reads session data directly from each tool's local storage. It **nev
 > Resuming a Claude Desktop session uses the `claude://resume?session=…` deep link, opening the conversation back in the Claude Desktop app. Sessions deduped across the standalone CLI and the desktop wrapper so each appears once.
 
 For remote machines, it runs scan commands over SSH — no agent installation required on the remote.
+
+## Cost Tracking
+
+VibeCockpit extracts token usage from your session files and estimates costs using current API pricing. No API keys or billing access needed — it's all computed locally from the data already on your machine.
+
+**What you get:**
+- Per-session cost estimates on every session card (`$12.40` or `~$3.50` for estimates)
+- GitHub-style activity heatmap — switch between cost, tokens, messages, or session count
+- Stacked trend chart — daily, weekly, or monthly, grouped by tool or project
+- **Plan recommendations** — compares your actual usage against Claude Max 5x/20x, ChatGPT Pro, Gemini Ultra, and tells you which tier fits. Includes estimated API-equivalent value per plan so you can right-size.
+- Model mix analysis — flags if you're spending 90% on Opus when Sonnet would work for routine tasks
+- Week-over-week trends, top projects by cost, unused tool alerts
+
+**Supported token sources:**
+
+| Provider | Token data | Cost accuracy |
+|----------|-----------|---------------|
+| Claude Code | Input, output, cache read/write per message | Exact |
+| OpenCode | Input, output, reasoning, cache per message | Exact |
+| Gemini CLI | Input, output, cached, thoughts per message | Exact |
+| Codex CLI | Total tokens per session | Estimated (70/30 split) |
+| Copilot CLI | No token data (flat subscription) | N/A |
+| Remote (SSH) | Not yet supported | — |
 
 ## Contributing
 

@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"vibecockpit/internal/config"
+	"vibecockpit/internal/costs"
 	"vibecockpit/internal/demo"
 	"vibecockpit/internal/install"
 	"vibecockpit/internal/launcher"
@@ -234,6 +235,9 @@ func printSessionsJSON(providers []provider.Provider) {
 		sessions, err := prov.ScanSessions(context.Background())
 		if err != nil {
 			continue
+		}
+		for i := range sessions {
+			sessions[i].EstCostUSD = costs.EstimateCost(sessions[i].Model, sessions[i].Tokens)
 		}
 		all = append(all, sessions...)
 	}

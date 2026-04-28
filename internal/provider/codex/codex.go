@@ -92,6 +92,10 @@ func (c *Codex) ScanSessions(ctx context.Context) ([]provider.Session, error) {
 		}
 
 		projectPath := cwd.String
+		var tokens provider.TokenUsage
+		if tokensUsed.Valid {
+			tokens.TotalTokens = tokensUsed.Int64
+		}
 		s := provider.Session{
 			ID:          id.String,
 			Provider:    "codex",
@@ -101,6 +105,7 @@ func (c *Codex) ScanSessions(ctx context.Context) ([]provider.Session, error) {
 			FirstPrompt: firstUserMessage.String,
 			Model:       modelStr,
 			GitBranch:   gitBranch.String,
+			Tokens:      tokens,
 		}
 
 		if createdAt.Valid {
