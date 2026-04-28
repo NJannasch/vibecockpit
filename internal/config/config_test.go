@@ -118,7 +118,7 @@ func TestSaveLoadRoundtrip(t *testing.T) {
 		NewProjectDir: "/home/test/projects",
 		Theme:         "light",
 		SortBy:        "name",
-		Providers:     []string{"claude", "cursor"},
+		DisabledProviders: []string{"copilot", "antigravity"},
 	}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -137,8 +137,8 @@ func TestSaveLoadRoundtrip(t *testing.T) {
 	if loaded.SortBy != cfg.SortBy {
 		t.Errorf("SortBy = %q, want %q", loaded.SortBy, cfg.SortBy)
 	}
-	if len(loaded.Providers) != 2 || loaded.Providers[0] != "claude" {
-		t.Errorf("Providers = %v, want [claude cursor]", loaded.Providers)
+	if len(loaded.DisabledProviders) != 2 || loaded.DisabledProviders[0] != "copilot" {
+		t.Errorf("DisabledProviders = %v, want [copilot antigravity]", loaded.DisabledProviders)
 	}
 }
 
