@@ -22,7 +22,7 @@
 
 ## Why?
 
-You vibe-code across multiple AI tools. Claude Code, Claude Desktop, Codex, Copilot, Gemini, OpenCode — each stores sessions in its own format and directory. Switching between them means losing track of where you left off.
+You vibe-code across multiple AI tools. Claude Code, Claude Desktop, Codex, Copilot, Gemini, OpenCode, Cursor, Antigravity — each stores sessions in its own format and directory. Switching between them means losing track of where you left off.
 
 **VibeCockpit** scans all of them automatically and gives you one place to search, filter, and resume any session — locally or on remote machines via SSH.
 
@@ -51,6 +51,8 @@ That's it. VibeCockpit auto-detects which tools you have installed and shows all
 | [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-cli) | ✅ | ✅ | ✅ |
 | [OpenCode](https://opencode.ai) | ✅ | — | ✅ |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | ✅ | — | ✅ |
+| [Cursor Agent](https://www.cursor.com/) (CLI + IDE) | ✅ | ✅ | — |
+| [Antigravity](https://idx.google.com/) (Google) | ✅ | ✅ | — |
 | Custom agents (Hermes, etc.) | via SSH | — | ✅ |
 
 > **Zero config required.** If the tool's data directory exists (`~/.claude`, `~/.codex`, etc.), VibeCockpit finds it.
@@ -166,6 +168,9 @@ VibeCockpit reads session data directly from each tool's local storage. It **nev
 | Copilot CLI | `~/.copilot/session-state/*/workspace.yaml` + `events.jsonl` |
 | OpenCode | `~/.local/share/opencode/opencode.db` |
 | Gemini CLI | `~/.gemini/tmp/*/chats/*.json` |
+| Cursor Agent (CLI) | `~/.cursor/chats/<hash>/<uuid>/store.db` |
+| Cursor Agent (IDE) | `~/.config/Cursor/User/globalStorage/state.vscdb` |
+| Antigravity | `~/.gemini/antigravity/brain/*/task.md.metadata.json` |
 
 > Resuming a Claude Desktop session uses the `claude://resume?session=…` deep link, opening the conversation back in the Claude Desktop app. Sessions deduped across the standalone CLI and the desktop wrapper so each appears once.
 
@@ -192,6 +197,9 @@ VibeCockpit extracts token usage from your session files and estimates costs usi
 | Gemini CLI | Input, output, cached, thoughts per message | Exact |
 | Codex CLI | Total tokens per session | Estimated (70/30 split) |
 | Copilot CLI | No token data (flat subscription) | N/A |
+| Cursor Agent (CLI) | Estimated from message blob sizes | Estimated |
+| Cursor Agent (IDE) | Estimated from message count | Estimated |
+| Antigravity | Conversations encrypted, no token data | N/A |
 | Remote (SSH) | Not yet supported | — |
 
 ## Contributing
