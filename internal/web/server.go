@@ -76,6 +76,13 @@ type apiConfig struct {
 	ExtraPath          []string           `json:"extraPath,omitempty"`
 	ScanSkipRules      []string           `json:"scanSkipRules,omitempty"`
 	ScanExtraHints     []string           `json:"scanExtraHints,omitempty"`
+	DisabledProviders  []string           `json:"disabledProviders"`
+	AllProviders       []providerInfo     `json:"allProviders,omitempty"`
+}
+
+type providerInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 func Start(cfg *config.Config, providers []provider.Provider, port int, version string) error {
@@ -450,6 +457,20 @@ func (s *server) handleTestSSH(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	allProviders := []providerInfo{
+		{ID: "claude", Name: "Claude Code"},
+		{ID: "claude-desktop", Name: "Claude Desktop"},
+		{ID: "opencode", Name: "OpenCode"},
+		{ID: "codex", Name: "Codex CLI"},
+		{ID: "copilot", Name: "Copilot CLI"},
+		{ID: "gemini", Name: "Gemini CLI"},
+		{ID: "cursor", Name: "Cursor Agent"},
+		{ID: "antigravity", Name: "Antigravity"},
+	}
+	disabled := s.cfg.DisabledProviders
+	if disabled == nil {
+		disabled = []string{}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(apiConfig{
 		Terminal:           s.cfg.Terminal,
@@ -467,6 +488,8 @@ func (s *server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		ExtraPath:          s.cfg.ExtraPath,
 		ScanSkipRules:      s.cfg.ScanSkipRules,
 		ScanExtraHints:     s.cfg.ScanExtraHints,
+		DisabledProviders:  disabled,
+		AllProviders:       allProviders,
 	})
 }
 
@@ -503,6 +526,9 @@ func (s *server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ScanExtraHints != nil {
 		s.cfg.ScanExtraHints = req.ScanExtraHints
+	}
+	if req.DisabledProviders != nil {
+		s.cfg.DisabledProviders = req.DisabledProviders
 	}
 	if err := s.cfg.Save(); err != nil {
 		jsonError(w, err.Error(), 500)

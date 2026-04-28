@@ -67,8 +67,10 @@ func expandHome(path string) string {
 }
 
 func execReplace(cfg *config.Config, binPath, bin string, args []string, dir string) error {
-	if err := os.Chdir(dir); err != nil {
-		return err
+	if dir != "" {
+		if err := os.Chdir(dir); err != nil {
+			return err
+		}
 	}
 	argv := append([]string{bin}, args...)
 	return syscall.Exec(binPath, argv, envForLaunch(cfg, binPath))

@@ -40,6 +40,11 @@ var pricing = map[string]ModelPrice{
 	"gemini-3-flash":       {Input: 0.075, Output: 0.3},
 	"gemini-3-flash-preview": {Input: 0.075, Output: 0.3},
 	"gemini-2.5-pro":       {Input: 1.25, Output: 5.0},
+
+	// Cursor (credit-based, routes through various backends)
+	"composer-2-fast":       {Input: 2.0, Output: 10.0},
+	"composer-2":            {Input: 3.0, Output: 15.0},
+	"cursor-small":          {Input: 0.5, Output: 2.0},
 }
 
 // Subscription plans for reference

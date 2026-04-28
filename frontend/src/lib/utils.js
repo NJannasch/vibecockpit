@@ -8,6 +8,8 @@ export const providerColors = {
   gemini: "#d97706",
   opencode: "#db2777",
   copilot: "#059669",
+  cursor: "#f97316",
+  antigravity: "#10b981",
 };
 
 /**
@@ -20,6 +22,8 @@ export const providerLabels = {
   copilot: "Copilot CLI",
   opencode: "OpenCode",
   gemini: "Gemini CLI",
+  cursor: "Cursor Agent",
+  antigravity: "Antigravity",
 };
 
 /**
@@ -32,6 +36,8 @@ export const providerTypes = {
   copilot: "cli",
   opencode: "cli",
   gemini: "cli",
+  cursor: "cli",
+  antigravity: "cli",
   hermes: "agent",
 };
 

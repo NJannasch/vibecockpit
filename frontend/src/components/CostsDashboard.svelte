@@ -214,6 +214,11 @@
       { name: "Google AI Pro", price: 20, estValue: 300, desc: "Higher CLI limits + $10 Cloud credits" },
       { name: "Google AI Ultra", price: 250, estValue: 3000, desc: "Highest limits + $100 Cloud credits" },
     ],
+    cursor: [
+      { name: "Pro", price: 20, estValue: 200, desc: "$20 credit pool, unlimited Auto" },
+      { name: "Pro+", price: 60, estValue: 600, desc: "3x Pro credits" },
+      { name: "Ultra", price: 200, estValue: 4000, desc: "20x Pro, priority features" },
+    ],
   };
 
   let recommendations = $derived.by(() => {
@@ -486,11 +491,14 @@
     </button>
   </div>
 
-  {#if hasRemote}
-    <div class="costs-info">
-      Cost data is not yet available for remote sessions (SSH). Remote sessions are shown in the session list but excluded from cost calculations.
-    </div>
-  {/if}
+  <div class="costs-info">
+    Cost estimates vary by data quality:
+    <b>Claude Code</b>, <b>OpenCode</b>, <b>Gemini</b> have exact per-message token counts.
+    <b>Codex</b> has total tokens per session (estimated 70/30 input/output split).
+    <b>Cursor</b> has no token metadata — estimated from message content sizes.
+    <b>Copilot</b> is flat-rate with no token data.
+    {#if hasRemote}<b>Remote</b> sessions have no cost data yet.{/if}
+  </div>
 
   <!-- Controls -->
   <div class="costs-toolbar">
@@ -755,6 +763,17 @@
               <tr><td>Free</td><td>$0</td><td>~$30</td></tr>
               <tr><td>AI Pro</td><td>$20/mo</td><td>~$300</td></tr>
               <tr><td>AI Ultra</td><td>$250/mo</td><td>~$3,000</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pricing-group">
+          <h4>Cursor</h4>
+          <table class="pricing-table">
+            <thead><tr><th>Plan</th><th>Price</th><th>~Value</th></tr></thead>
+            <tbody>
+              <tr><td>Pro</td><td>$20/mo</td><td>~$200</td></tr>
+              <tr><td>Pro+</td><td>$60/mo</td><td>~$600</td></tr>
+              <tr><td>Ultra</td><td>$200/mo</td><td>~$4,000</td></tr>
             </tbody>
           </table>
         </div>

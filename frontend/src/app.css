@@ -197,6 +197,23 @@ main{flex:1;padding:1.5rem 2rem 3rem;animation:pageIn .2s ease}
 .settings-remote-row{display:flex;gap:.4rem;margin-bottom:.5rem;align-items:center;flex-wrap:wrap}
 .settings-remote-row input,.settings-remote-row select{font-size:.82rem}
 
+.provider-toggles{display:flex;flex-wrap:wrap;gap:.5rem}
+.provider-toggle{display:flex;align-items:center;gap:.4rem;font-size:.82rem;padding:.3rem .6rem;
+  border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;user-select:none;
+  background:var(--surface);transition:opacity .15s}
+.provider-toggle.disabled{opacity:.45}
+.provider-toggle input{margin:0}
+.provider-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* ─── Wizard ─── */
+.wizard-overlay{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center}
+.wizard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  max-width:480px;width:90%;padding:2rem;text-align:center}
+.wizard h2{margin-bottom:.3rem;font-size:1.2rem}
+.wizard>p{color:var(--text-secondary);margin-bottom:1.5rem;line-height:1.5;font-size:.9rem}
+.wizard .provider-toggles{justify-content:center;margin-bottom:1.5rem}
+.wizard-actions{display:flex;gap:.6rem;justify-content:center}
+
 /* ─── Onboarding ─── */
 .onboarding{
   max-width:520px;margin:3rem auto;text-align:center;

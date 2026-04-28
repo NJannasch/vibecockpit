@@ -29,11 +29,9 @@ func (r *Registry) InitAll() error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	enabledSet := make(map[string]bool)
-	if len(r.cfg.Providers) > 0 {
-		for _, name := range r.cfg.Providers {
-			enabledSet[name] = true
-		}
+	disabledSet := make(map[string]bool)
+	for _, name := range r.cfg.DisabledProviders {
+		disabledSet[name] = true
 	}
 
 	pluginConfigs := r.cfg.PluginConfigs
@@ -44,7 +42,7 @@ func (r *Registry) InitAll() error {
 	for _, p := range r.plugins {
 		meta := p.Metadata()
 
-		if len(r.cfg.Providers) > 0 && !enabledSet[meta.ID] {
+		if disabledSet[meta.ID] {
 			p.SetEnabled(false)
 			continue
 		}

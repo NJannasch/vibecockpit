@@ -20,9 +20,11 @@ import (
 	"vibecockpit/internal/plugin/builtin"
 	"vibecockpit/internal/plugin/remote"
 	"vibecockpit/internal/provider"
+	"vibecockpit/internal/provider/antigravity"
 	"vibecockpit/internal/provider/claude"
 	"vibecockpit/internal/provider/claudedesktop"
 	"vibecockpit/internal/provider/codex"
+	"vibecockpit/internal/provider/cursoragent"
 	"vibecockpit/internal/provider/copilot"
 	"vibecockpit/internal/provider/gemini"
 	"vibecockpit/internal/provider/opencode"
@@ -87,6 +89,10 @@ func main() {
 	}
 
 	cfg := config.Load()
+	if cfg.Version != version {
+		cfg.Version = version
+		_ = cfg.Save()
+	}
 	registry := buildRegistry(cfg)
 
 	var providers []provider.Provider
@@ -180,6 +186,8 @@ func buildRegistry(cfg *config.Config) *plugin.Registry {
 	reg.Register(builtin.New("codex", "Codex CLI", "◈", cx, cx.Available))
 	reg.Register(builtin.New("copilot", "Copilot CLI", "◉", copilot.New(), copilot.New().Available))
 	reg.Register(builtin.New("gemini", "Gemini CLI", "✦", gemini.New(), gemini.New().Available))
+	reg.Register(builtin.New("cursor", "Cursor Agent", "●", cursoragent.New(), cursoragent.Available))
+	reg.Register(builtin.New("antigravity", "Antigravity", "▲", antigravity.New(cfg.NewProjectDir), antigravity.Available))
 
 	for i, src := range cfg.RemoteSources {
 		id := fmt.Sprintf("remote-%d", i)

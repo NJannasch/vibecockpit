@@ -10,13 +10,14 @@ import (
 )
 
 type Config struct {
+	Version       string   `yaml:"version,omitempty"`
 	Terminal      string   `yaml:"terminal"`
 	CustomTermCmd string   `yaml:"custom_terminal_cmd,omitempty"`
 	NewProjectDir string   `yaml:"new_project_dir"`
 	Theme         string   `yaml:"theme,omitempty"`
 	SortBy        string   `yaml:"sort_by,omitempty"`
 	GroupBy       string            `yaml:"group_by,omitempty"`
-	Providers     []string                    `yaml:"providers,omitempty"`
+	DisabledProviders []string                `yaml:"disabled_providers,omitempty"`
 	ProviderPaths map[string]string          `yaml:"provider_paths,omitempty"`
 	PluginConfigs   map[string]map[string]any `yaml:"plugins,omitempty"`
 	RemoteSources   []map[string]any          `yaml:"remote_sources,omitempty"`

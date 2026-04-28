@@ -37,6 +37,8 @@
   let resumeModel = $state("");
   let collapsedGroups = $state(new Set());
   let collapsedTreeNodes = $state(new Set());
+  let showWizard = $state(false);
+  let wizardDisabled = $state([]);
 
   // Store subscriptions for local reactivity
   let sessionList = $state([]);
@@ -109,10 +111,42 @@
   onMount(async () => {
     await loadConfig();
     applyTheme(configData.theme === "dark" ? "dark" : "light");
+    loadVersionInfo();
+    if (!localStorage.getItem("vc-wizard-done")) {
+      showWizard = true;
+      return;
+    }
     await refresh(false);
     startAutoRefresh();
-    loadVersionInfo();
   });
+
+  function wizardToggle(id) {
+    if (wizardDisabled.includes(id)) {
+      wizardDisabled = wizardDisabled.filter(x => x !== id);
+    } else {
+      wizardDisabled = [...wizardDisabled, id];
+    }
+  }
+
+  async function wizardFinish() {
+    const updated = {...configData, disabledProviders: wizardDisabled};
+    config.set(updated);
+    await saveConfig(updated);
+    localStorage.setItem("vc-wizard-done", "1");
+    showWizard = false;
+    await refresh(false);
+    startAutoRefresh();
+  }
+
+  async function wizardScanAll() {
+    const updated = {...configData, disabledProviders: []};
+    config.set(updated);
+    await saveConfig(updated);
+    localStorage.setItem("vc-wizard-done", "1");
+    showWizard = false;
+    await refresh(false);
+    startAutoRefresh();
+  }
 
   // ─── Keyboard Shortcuts ───
 
@@ -1090,8 +1124,29 @@
       <div class="settings-row">
         <div class="settings-label">
           <span>Default project directory</span>
+          <small style="color:var(--text-muted);font-weight:normal">Used for new projects and to fuzzy-match sessions to local folders</small>
         </div>
         <input type="text" value={configData.newProjectDir || ""} onchange={(e) => save(c => ({...c, newProjectDir: e.target.value}))} />
+      </div>
+    </div>
+
+    <!-- Providers -->
+    <div class="settings-card">
+      <h3 class="settings-section">Providers</h3>
+      <p style="color:var(--text-muted);font-size:.85rem;margin:0 0 .5rem">Choose which coding tools to scan for sessions. Disabled providers won't appear in the session list.</p>
+      <div class="provider-toggles">
+        {#each configData.allProviders || [] as p}
+          {@const disabled = (configData.disabledProviders || []).includes(p.id)}
+          <label class="provider-toggle" class:disabled>
+            <input type="checkbox" checked={!disabled} onchange={() => {
+              const current = configData.disabledProviders || [];
+              const next = disabled ? current.filter(id => id !== p.id) : [...current, p.id];
+              save(c => ({...c, disabledProviders: next}));
+            }} />
+            <span class="provider-dot" style="background:{providerColors[p.id] || '#888'}"></span>
+            {p.name}
+          </label>
+        {/each}
       </div>
     </div>
 
@@ -1291,6 +1346,30 @@
     </div>
   </div>
 </div>
+
+<!-- Wizard -->
+{#if showWizard}
+<div class="wizard-overlay">
+  <div class="wizard">
+    <h2>Welcome to VibeCockpit</h2>
+    <p>Which AI coding tools would you like to scan? You can change this anytime in Settings.</p>
+    <div class="provider-toggles">
+      {#each configData.allProviders || [] as p}
+        {@const off = wizardDisabled.includes(p.id)}
+        <label class="provider-toggle" class:disabled={off}>
+          <input type="checkbox" checked={!off} onchange={() => wizardToggle(p.id)} />
+          <span class="provider-dot" style="background:{providerColors[p.id] || '#888'}"></span>
+          {p.name}
+        </label>
+      {/each}
+    </div>
+    <div class="wizard-actions">
+      <button class="btn" onclick={wizardScanAll}>Scan everything</button>
+      <button class="btn btn-primary" onclick={wizardFinish}>Continue</button>
+    </div>
+  </div>
+</div>
+{/if}
 
 <!-- Toast Area -->
 <div class="toast-area">
