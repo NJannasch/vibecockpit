@@ -1,0 +1,59 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosec
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Print
+        - fmt.Printf
+        - fmt.Println
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (database/sql.Rows).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
+        - (*tabwriter.Writer).Flush
+        - (*encoding/json.Encoder).Encode
+    gosec:
+      excludes:
+        - G104
+        - G114
+        - G204
+        - G202
+        - G301
+        - G302
+        - G304
+        - G306
+
+  exclusions:
+    paths:
+      - frontend
+      - internal/web/static
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+      - path: _test\.go
+        text: ".*"
+        linters:
+          - gocritic
+      - text: "ifElseChain|singleCaseSwitch"
+        linters:
+          - gocritic

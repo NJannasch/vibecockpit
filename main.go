@@ -204,7 +204,7 @@ func buildRegistry(cfg *config.Config) *plugin.Registry {
 		reg.Register(rp)
 	}
 
-	reg.InitAll()
+	_ = reg.InitAll()
 	return reg
 }
 
@@ -234,7 +234,7 @@ func printSessions(providers []provider.Provider) {
 				s.GitBranch, s.MessageCount, s.Modified.Format("2006-01-02 15:04"), active)
 		}
 	}
-	w.Flush()
+	_ = w.Flush()
 }
 
 func printSessionsJSON(providers []provider.Provider) {

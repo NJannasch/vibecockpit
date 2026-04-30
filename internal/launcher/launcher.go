@@ -150,7 +150,7 @@ func launchTerminal(cfg *config.Config, terminal, binPath string, args []string,
 	return cmd.Start()
 }
 
-func launchCustom(cfg *config.Config, tmpl, binPath string, args []string, dir string) error {
+func launchCustom(_ *config.Config, tmpl, binPath string, args []string, dir string) error {
 	fullCmd := binPath
 	for _, a := range args {
 		fullCmd += " " + a

@@ -68,7 +68,7 @@ func (r *Registry) StartAll(ctx context.Context) {
 			continue
 		}
 		if lp, ok := p.(LifecyclePlugin); ok {
-			go lp.Start(ctx)
+			go func() { _ = lp.Start(ctx) }()
 		}
 	}
 }
@@ -78,7 +78,7 @@ func (r *Registry) StopAll() {
 	defer r.mu.RUnlock()
 	for _, p := range r.plugins {
 		if lp, ok := p.(LifecyclePlugin); ok {
-			lp.Stop()
+			_ = lp.Stop()
 		}
 	}
 }

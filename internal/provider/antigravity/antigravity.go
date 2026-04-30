@@ -172,10 +172,7 @@ func (a *Antigravity) buildSession(id string, convInfo os.FileInfo) provider.Ses
 
 func extractPathFromBrain(brainDir string) string {
 	// Scan main files first, then resolved versions
-	var files []string
-	for _, name := range []string{"walkthrough.md", "implementation_plan.md", "task.md"} {
-		files = append(files, name)
-	}
+	files := []string{"walkthrough.md", "implementation_plan.md", "task.md"}
 	if entries, err := os.ReadDir(brainDir); err == nil {
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".resolved") || strings.Contains(e.Name(), ".resolved.") {
@@ -301,7 +298,7 @@ func tokenize(s string) []string {
 	return tokens
 }
 
-func matchScore(projectKeywords, dirTokens []string, dirName string) int {
+func matchScore(projectKeywords, dirTokens []string, _ string) int {
 	score := 0
 	for _, kw := range projectKeywords {
 		for _, dt := range dirTokens {

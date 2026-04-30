@@ -141,8 +141,9 @@ func scanEvents(path string) (model, firstPrompt string, msgCount int) {
 			var d struct {
 				NewModel string `json:"newModel"`
 			}
-			json.Unmarshal(ev.Data, &d)
-			model = d.NewModel
+			if json.Unmarshal(ev.Data, &d) == nil {
+				model = d.NewModel
+			}
 
 		case "user.message":
 			msgCount++
@@ -150,8 +151,9 @@ func scanEvents(path string) (model, firstPrompt string, msgCount int) {
 				var d struct {
 					Content string `json:"content"`
 				}
-				json.Unmarshal(ev.Data, &d)
-				firstPrompt = strings.TrimSpace(d.Content)
+				if json.Unmarshal(ev.Data, &d) == nil {
+					firstPrompt = strings.TrimSpace(d.Content)
+				}
 			}
 
 		case "assistant.turn_start":

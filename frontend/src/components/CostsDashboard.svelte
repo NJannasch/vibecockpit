@@ -240,7 +240,6 @@
       if (!s.modified) continue;
       const d = new Date(s.modified);
       const prov = s.provider;
-      const provLabel = providerLabels[prov] || prov;
 
       // Week-over-week
       if (d >= sevenDaysAgo) thisWeekCost[prov] = (thisWeekCost[prov] || 0) + (s.estCostUsd || 0);
@@ -392,7 +391,6 @@
       if (lastWeek > 0) {
         const change = ((thisWeek - lastWeek) / lastWeek) * 100;
         if (Math.abs(change) > 25) {
-          const dir = change > 0 ? "up" : "down";
           const icon = change > 0 ? "↑" : "↓";
           recs.push({ type: change > 0 ? "insight" : "save", provider: prov,
             text: `${provLabel}: Spend is ${icon} ${Math.abs(change).toFixed(0)}% vs last week ($${thisWeek.toFixed(0)} vs $${lastWeek.toFixed(0)}).`,

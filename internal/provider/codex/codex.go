@@ -143,7 +143,9 @@ func (c *Codex) DeleteSession(sessionID string) error {
 	defer tx.Rollback()
 
 	for _, table := range []string{"thread_dynamic_tools", "stage1_outputs", "thread_spawn_edges"} {
-		tx.Exec("DELETE FROM "+table+" WHERE thread_id = ?", sessionID)
+		if _, err := tx.Exec("DELETE FROM "+table+" WHERE thread_id = ?", sessionID); err != nil {
+			return fmt.Errorf("deleting from %s: %w", table, err)
+		}
 	}
 	if _, err := tx.Exec("DELETE FROM threads WHERE id = ?", sessionID); err != nil {
 		return fmt.Errorf("deleting thread: %w", err)
