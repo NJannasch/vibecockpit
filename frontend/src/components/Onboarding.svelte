@@ -37,4 +37,8 @@
     </div>
   </div>
   <button class="btn btn-primary" onclick={onnewproject}>+ Create Your First Project</button>
+  <div class="privacy-notice">
+    <span class="privacy-icon">&#128274;</span>
+    VibeCockpit scans your local AI tool directories (e.g. <code>~/.claude</code>, <code>~/.codex</code>) to discover sessions, configs, and extensions. All analysis happens entirely on your machine — no data is sent anywhere.
+  </div>
 </div>

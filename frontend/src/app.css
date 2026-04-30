@@ -233,6 +233,13 @@ main{flex:1;padding:1.5rem 2rem 3rem;animation:pageIn .2s ease}
 }
 .step h4{font-size:.9rem;margin-bottom:.2rem}
 .step p{font-size:.82rem;color:var(--text-secondary)}
+.privacy-notice{
+  margin-top:1.5rem;padding:.8rem 1rem;
+  font-size:.78rem;color:var(--text-secondary);line-height:1.5;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+  text-align:left;max-width:460px;
+}
+.privacy-icon{margin-right:.3rem}
 
 /* ─── View Toggle ─── */
 .view-toggle{display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
