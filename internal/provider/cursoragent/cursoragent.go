@@ -221,7 +221,7 @@ type sessionMeta struct {
 	LastUsedModel string `json:"lastUsedModel"`
 }
 
-func (c *CursorAgent) scanSession(dbPath, workspaceHash string) (*provider.Session, error) {
+func (c *CursorAgent) scanSession(dbPath, _ string) (*provider.Session, error) {
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
 		return nil, err
@@ -246,7 +246,7 @@ func (c *CursorAgent) scanSession(dbPath, workspaceHash string) (*provider.Sessi
 
 	// Count blobs
 	var blobCount int
-	db.QueryRow("SELECT COUNT(*) FROM blobs").Scan(&blobCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM blobs").Scan(&blobCount)
 
 	// Extract first user message as summary
 	var firstPrompt string
@@ -296,9 +296,10 @@ func (c *CursorAgent) scanSession(dbPath, workspaceHash string) (*provider.Sessi
 			if json.Unmarshal(data, &msg) != nil {
 				continue
 			}
-			if msg.Role == "user" {
+			switch msg.Role {
+			case "user":
 				tokens.InputTokens += int64(len(data)) / 4
-			} else if msg.Role == "assistant" {
+			case "assistant":
 				tokens.OutputTokens += int64(len(data)) / 4
 			}
 		}

@@ -6,7 +6,6 @@ var (
 	purple    = lipgloss.Color("99")
 	green     = lipgloss.Color("46")
 	cyan      = lipgloss.Color("39")
-	white     = lipgloss.Color("15")
 	gray      = lipgloss.Color("242")
 	darkGray  = lipgloss.Color("236")
 	lightGray = lipgloss.Color("250")
@@ -56,10 +55,6 @@ var (
 	helpKeyStyle = lipgloss.NewStyle().
 			Foreground(lightGray).
 			Bold(true)
-
-	statusBarStyle = lipgloss.NewStyle().
-			Foreground(gray).
-			MarginTop(1)
 
 	newProjectStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).

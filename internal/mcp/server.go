@@ -168,7 +168,10 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			Provider string `json:"provider"`
 			Limit    int    `json:"limit"`
 		}
-		json.Unmarshal(call.Arguments, &args)
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
 		if args.Limit == 0 {
 			args.Limit = 20
 		}
@@ -178,14 +181,20 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		var args struct {
 			Query string `json:"query"`
 		}
-		json.Unmarshal(call.Arguments, &args)
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
 		result, count = s.searchSessions(args.Query)
 
 	case "get_session_detail":
 		var args struct {
 			SessionID string `json:"session_id"`
 		}
-		json.Unmarshal(call.Arguments, &args)
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
 		result, count = s.getSessionDetail(args.SessionID)
 
 	case "scan_secrets":
@@ -210,7 +219,7 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 	}
 
 	resultJSON, _ = json.Marshal(result)
-	s.audit.Log(call.Name, json.RawMessage(call.Arguments), resultJSON, count)
+	s.audit.Log(call.Name, call.Arguments, resultJSON, count)
 
 	writeResult(w, req.ID, map[string]any{
 		"content": []map[string]any{

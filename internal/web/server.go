@@ -20,9 +20,11 @@ import (
 
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/costs"
+	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/launcher"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/scanner"
+	"vibecockpit/internal/stats"
 )
 
 //go:embed all:static
@@ -36,6 +38,11 @@ type server struct {
 	cachedAt      time.Time
 	cacheTTL      time.Duration
 	secretScanner *scanner.Scanner
+
+	inventoryCache    *inventory.Inventory
+	inventoryCachedAt time.Time
+	inventoryTTL      time.Duration
+	demoMode          bool
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -86,9 +93,12 @@ type providerInfo struct {
 }
 
 func Start(cfg *config.Config, providers []provider.Provider, port int, version string) error {
+	isDemo := len(providers) == 1 && providers[0].Name() == "demo"
 	s := &server{
 		cfg: cfg, providers: providers, version: version,
-		cacheTTL: 10 * time.Second,
+		cacheTTL:     10 * time.Second,
+		inventoryTTL: 60 * time.Second,
+		demoMode:     isDemo,
 		secretScanner: func() *scanner.Scanner {
 			if cfg.EnableScanner {
 				return scanner.New(providers, scanner.Config{
@@ -114,6 +124,9 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	mux.HandleFunc("GET /api/costs", s.handleCosts)
+	mux.HandleFunc("GET /api/inventory", s.handleInventory)
+	mux.HandleFunc("GET /api/stats", s.handleStats)
+	mux.HandleFunc("GET /api/inventory/file", s.handleInventoryFile)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
@@ -577,7 +590,7 @@ func openBrowser(url string) {
 	default:
 		return
 	}
-	cmd.Start()
+	_ = cmd.Start()
 }
 
 func detectTerminal() string {
@@ -634,6 +647,129 @@ func (s *server) handleCosts(w http.ResponseWriter, r *http.Request) {
 	summary := costs.Aggregate(all, since)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(summary)
+}
+
+func (s *server) handleInventory(w http.ResponseWriter, r *http.Request) {
+	forceRefresh := r.URL.Query().Get("refresh") == "true"
+
+	if !forceRefresh && s.inventoryCache != nil && time.Since(s.inventoryCachedAt) < s.inventoryTTL {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(s.inventoryCache)
+		return
+	}
+
+	var inv *inventory.Inventory
+	if s.demoMode {
+		inv = inventory.Demo()
+	} else {
+		var all []provider.Session
+		for _, p := range s.providers {
+			sessions, err := p.ScanSessions(context.Background())
+			if err != nil {
+				continue
+			}
+			all = append(all, sessions...)
+		}
+		inv = inventory.Scan(all, s.cfg.NewProjectDir)
+	}
+
+	s.inventoryCache = inv
+	s.inventoryCachedAt = time.Now()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(inv)
+}
+
+func (s *server) handleInventoryFile(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		http.Error(w, "missing path parameter", http.StatusBadRequest)
+		return
+	}
+
+	path = filepath.Clean(path)
+
+	allowed := false
+	if inv := s.inventoryCache; inv != nil {
+		for _, f := range inv.InstructionFiles {
+			if filepath.Clean(f.Path) == path {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			for _, m := range inv.MCPServers {
+				if filepath.Clean(m.SourcePath) == path {
+					allowed = true
+					break
+				}
+			}
+		}
+		if !allowed {
+			for _, sk := range inv.Skills {
+				if filepath.Clean(sk.Path) == path {
+					allowed = true
+					break
+				}
+			}
+		}
+		if !allowed {
+			for _, mem := range inv.Memories {
+				if filepath.Clean(mem.Path) == path {
+					allowed = true
+					break
+				}
+			}
+		}
+	}
+
+	if !allowed {
+		http.Error(w, "file not in inventory", http.StatusForbidden)
+		return
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		http.Error(w, "could not read file", http.StatusNotFound)
+		return
+	}
+
+	const maxSize = 512 * 1024
+	if len(data) > maxSize {
+		data = data[:maxSize]
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"path":    path,
+		"content": string(data),
+	})
+}
+
+func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
+	var all []provider.Session
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		all = append(all, sessions...)
+	}
+
+	var inv *inventory.Inventory
+	if s.inventoryCache != nil && time.Since(s.inventoryCachedAt) < s.inventoryTTL {
+		inv = s.inventoryCache
+	} else if s.demoMode {
+		inv = inventory.Demo()
+	} else {
+		inv = inventory.Scan(all, s.cfg.NewProjectDir)
+		s.inventoryCache = inv
+		s.inventoryCachedAt = time.Now()
+	}
+
+	result := stats.Compute(all, inv)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 func (s *server) handleStartScan(w http.ResponseWriter, r *http.Request) {

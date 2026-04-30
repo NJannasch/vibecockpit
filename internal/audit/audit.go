@@ -56,8 +56,8 @@ func (l *Logger) Log(tool string, params any, result []byte, count int) {
 	defer f.Close()
 
 	data, _ := json.Marshal(entry)
-	f.Write(data)
-	f.Write([]byte("\n"))
+	_, _ = f.Write(data)
+	_, _ = f.Write([]byte("\n"))
 }
 
 func (l *Logger) Path() string {

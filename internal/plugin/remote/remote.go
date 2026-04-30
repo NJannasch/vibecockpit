@@ -291,7 +291,7 @@ func (r *remoteProvider) scanHermesSSH(ctx context.Context, cfg RemoteConfig, so
 		parts := strings.Fields(line)
 		if len(parts) == 2 {
 			var n int
-			fmt.Sscanf(parts[1], "%d", &n)
+			_, _ = fmt.Sscanf(parts[1], "%d", &n)
 			counts[parts[0]] = n
 		}
 	}

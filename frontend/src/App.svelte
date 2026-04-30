@@ -16,9 +16,11 @@
     stopAutoRefresh,
   } from "./lib/stores.js";
   import { saveConfig, launchSession, deleteSession, createProject as apiCreateProject, testSSH, startSecretScan, getScanStatus } from "./lib/api.js";
-  import { shortModel, relativeTime, providerColors, providerLabels, getProviderType, dateGroup } from "./lib/utils.js";
+  import { shortModel, relativeTime, providerColors, providerLabels, dateGroup } from "./lib/utils.js";
   import Dashboard from "./components/Dashboard.svelte";
   import CostsDashboard from "./components/CostsDashboard.svelte";
+  import ToolInventory from "./components/ToolInventory.svelte";
+  import AdoptionTimeline from "./components/AdoptionTimeline.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
 
@@ -55,7 +57,7 @@
     try {
       const r = await fetch("/api/version");
       if (r.ok) versionInfo = await r.json();
-    } catch {}
+    } catch { /* version endpoint optional */ }
   }
 
   const unsubSessions = sessions.subscribe((v) => (sessionList = v));
@@ -391,7 +393,7 @@
           clearInterval(scanPollTimer);
           scanPollTimer = null;
         }
-      } catch {}
+      } catch { /* poll failure is transient */ }
     }, 1500);
   }
 
@@ -442,6 +444,7 @@
   let settingsNewDir = $state("");
   let settingsProviderPaths = $state({});
 
+  // eslint-disable-next-line no-unused-vars
   function showSettings() {
     settingsTerminal = configData.terminal || "default";
     settingsNewDir = configData.newProjectDir || "";
@@ -602,11 +605,13 @@
     return text;
   }
 
-  // Converts highlight markers to HTML
+  // Converts highlight markers (NUL-delimited) to HTML
   function highlightHtml(text, terms) {
+    /* eslint-disable no-control-regex */
     return highlight(text, terms)
       .replace(/\x00HL_START\x00/g, '<span class="match-hl">')
       .replace(/\x00HL_END\x00/g, "</span>");
+    /* eslint-enable no-control-regex */
   }
 
   // ─── Overlay Click ───
@@ -654,6 +659,8 @@
     <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
     <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
     <button class="nav-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>Costs</button>
+    <button class="nav-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>Inventory</button>
+    <button class="nav-btn" class:active={page === "stats"} onclick={() => navigateTo("stats")}>Stats</button>
     {#if configData.enableScanner}
       <button class="nav-btn" class:active={page === "security"} onclick={() => navigateTo("security")}>Security</button>
     {/if}
@@ -969,6 +976,14 @@
 {:else if page === "costs"}
   <main>
     <CostsDashboard sessions={sessionList} />
+  </main>
+{:else if page === "inventory"}
+  <main>
+    <ToolInventory />
+  </main>
+{:else if page === "stats"}
+  <main>
+    <AdoptionTimeline />
   </main>
 {:else if page === "security"}
   <main>

@@ -137,7 +137,7 @@ type toolCall struct {
 	Args map[string]any `json:"args"`
 }
 
-func (g *Gemini) parseSession(path, dirName, projectPath string) (*provider.Session, error) {
+func (g *Gemini) parseSession(path, _, projectPath string) (*provider.Session, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

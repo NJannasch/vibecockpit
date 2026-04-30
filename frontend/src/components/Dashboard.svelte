@@ -1,5 +1,5 @@
 <script>
-  import { providerColors, providerLabels, getProviderType, relativeTime, computeDashboardData } from "../lib/utils.js";
+  import { providerColors, providerLabels, relativeTime, computeDashboardData } from "../lib/utils.js";
 
   let { sessions, onnavigate, onlaunch, onfilterby } = $props();
 

@@ -104,3 +104,22 @@ export async function getScanStatus() {
   const res = await fetch("/api/scan-secrets");
   return res.json();
 }
+
+export async function fetchInventory(forceRefresh = false) {
+  const url = forceRefresh ? "/api/inventory?refresh=true" : "/api/inventory";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch inventory: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchStats() {
+  const res = await fetch("/api/stats");
+  if (!res.ok) throw new Error(`Failed to fetch stats: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchInventoryFile(path) {
+  const res = await fetch(`/api/inventory/file?path=${encodeURIComponent(path)}`);
+  if (!res.ok) throw new Error(`Failed to read file: ${res.statusText}`);
+  return res.json();
+}
