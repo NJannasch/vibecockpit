@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"vibecockpit/internal/audit"
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
@@ -43,6 +44,8 @@ type server struct {
 	inventoryCachedAt time.Time
 	inventoryTTL      time.Duration
 	demoMode          bool
+
+	auditLog *audit.Logger
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -99,6 +102,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 		cacheTTL:     10 * time.Second,
 		inventoryTTL: 60 * time.Second,
 		demoMode:     isDemo,
+		auditLog:     audit.NewLogger(),
 		secretScanner: func() *scanner.Scanner {
 			if cfg.EnableScanner {
 				return scanner.New(providers, scanner.Config{
@@ -128,6 +132,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/stats", s.handleStats)
 	mux.HandleFunc("GET /api/inventory/file", s.handleInventoryFile)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
+	mux.HandleFunc("GET /api/mcp-audit", s.handleMCPAudit)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
@@ -543,6 +548,8 @@ func (s *server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	if req.DisabledProviders != nil {
 		s.cfg.DisabledProviders = req.DisabledProviders
 	}
+	s.cfg.EnableMCP = req.EnableMCP
+	s.cfg.EnableScanner = req.EnableScanner
 	if err := s.cfg.Save(); err != nil {
 		jsonError(w, err.Error(), 500)
 		return
@@ -792,6 +799,25 @@ func (s *server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *server) handleMCPAudit(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	entries, err := s.auditLog.ReadLog(limit)
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	if entries == nil {
+		entries = []audit.Entry{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
 }
 
 // getLatestVersion returns the cached latest release tag, refreshing it

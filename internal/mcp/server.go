@@ -11,23 +11,28 @@ import (
 	"time"
 
 	"vibecockpit/internal/audit"
-	"vibecockpit/internal/scanner"
+	"vibecockpit/internal/costs"
+	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/sanitize"
+	"vibecockpit/internal/scanner"
 	"vibecockpit/internal/search"
+	"vibecockpit/internal/stats"
 )
 
 type Server struct {
-	providers []provider.Provider
-	version   string
-	audit     *audit.Logger
+	providers    []provider.Provider
+	version      string
+	workspaceDir string
+	audit        *audit.Logger
 }
 
-func NewServer(providers []provider.Provider, version string) *Server {
+func NewServer(providers []provider.Provider, version, workspaceDir string) *Server {
 	return &Server{
-		providers: providers,
-		version:   version,
-		audit:     audit.NewLogger(),
+		providers:    providers,
+		version:      version,
+		workspaceDir: workspaceDir,
+		audit:        audit.NewLogger(),
 	}
 }
 
@@ -145,6 +150,53 @@ func (s *Server) toolDefinitions() []map[string]any {
 				},
 			},
 		},
+		{
+			"name":        "get_costs",
+			"description": "Get cost breakdown for AI coding sessions. Returns total spend, per-provider costs, per-project costs, and daily cost history.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"days": map[string]any{
+						"type":        "integer",
+						"description": "Number of days to look back. Default 30.",
+					},
+				},
+			},
+		},
+		{
+			"name":        "get_stats",
+			"description": "Get adoption statistics and timeline. Returns tool usage stats, adoption timeline events, artifact inventory, and summary metrics like first activity date, most active tool/project, and total counts.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		{
+			"name":        "get_inventory",
+			"description": "Get tool inventory: installed AI tools, models in use, MCP servers, instruction files (CLAUDE.md, .cursorrules, etc.), skills, memories, IDE extensions, and sensitive files detected.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		{
+			"name":        "rescan",
+			"description": "Trigger a fresh scan. Returns updated data for the requested scope. Use after making changes that should be reflected in VibeCockpit.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"scope": map[string]any{
+						"type":        "string",
+						"description": "What to rescan: 'all' (default), 'sessions', 'inventory', 'stats', or 'costs'.",
+						"enum":        []string{"all", "sessions", "inventory", "stats", "costs"},
+					},
+					"provider": map[string]any{
+						"type":        "string",
+						"description": "Filter by provider (only applies to sessions/costs scope). Omit for all.",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -212,6 +264,87 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		}
 		result = status
 		count = status.FindingCount
+
+	case "get_costs":
+		var args struct {
+			Days int `json:"days"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		if args.Days == 0 {
+			args.Days = 30
+		}
+		all := s.allSessions()
+		for i := range all {
+			all[i].EstCostUSD = costs.EstimateCost(all[i].Model, all[i].Tokens)
+		}
+		since := time.Now().AddDate(0, 0, -args.Days)
+		result = costs.Aggregate(all, since)
+		count = len(all)
+
+	case "get_stats":
+		all := s.allSessions()
+		inv := inventory.Scan(all, s.workspaceDir)
+		result = stats.Compute(all, inv)
+		count = len(all)
+
+	case "get_inventory":
+		all := s.allSessions()
+		result = inventory.Scan(all, s.workspaceDir)
+		count = 1
+
+	case "rescan":
+		var args struct {
+			Scope    string `json:"scope"`
+			Provider string `json:"provider"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		if args.Scope == "" {
+			args.Scope = "all"
+		}
+
+		out := map[string]any{"scope": args.Scope}
+		all := s.allSessions()
+
+		switch args.Scope {
+		case "sessions":
+			sessions, _ := s.listSessions(args.Provider, 1000)
+			out["sessions"] = sessions
+			count = len(all)
+		case "inventory":
+			out["inventory"] = inventory.Scan(all, s.workspaceDir)
+			count = 1
+		case "stats":
+			inv := inventory.Scan(all, s.workspaceDir)
+			out["stats"] = stats.Compute(all, inv)
+			count = len(all)
+		case "costs":
+			for i := range all {
+				all[i].EstCostUSD = costs.EstimateCost(all[i].Model, all[i].Tokens)
+			}
+			since := time.Now().AddDate(0, 0, -30)
+			out["costs"] = costs.Aggregate(all, since)
+			count = len(all)
+		default: // "all"
+			sessions, _ := s.listSessions(args.Provider, 1000)
+			for i := range all {
+				all[i].EstCostUSD = costs.EstimateCost(all[i].Model, all[i].Tokens)
+			}
+			inv := inventory.Scan(all, s.workspaceDir)
+			since := time.Now().AddDate(0, 0, -30)
+			out["sessions"] = sessions
+			out["inventory"] = inv
+			out["stats"] = stats.Compute(all, inv)
+			out["costs"] = costs.Aggregate(all, since)
+			count = len(all)
+		}
+
+		result = out
 
 	default:
 		writeError(w, req.ID, -32602, fmt.Sprintf("Unknown tool: %s", call.Name))
