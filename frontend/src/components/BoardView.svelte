@@ -32,6 +32,7 @@
   let dragOverCol = $state(null);
   let showArchived = $state(false);
   let filterPriority = $state("");
+  let searchQuery = $state("");
 
   const defaultColumns = ["backlog", "claimed", "in-progress", "review", "done"];
 
@@ -53,10 +54,18 @@
     return activeBoard?.columns?.length ? activeBoard.columns : defaultColumns;
   }
 
+  function matchesSearch(t) {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return [t.id, t.title, t.description, t.tool, t.model, t.priority, t.claimedBy, t.summary, t.createdBy]
+      .some(v => v && v.toLowerCase().includes(q));
+  }
+
   function tasksByColumn(col) {
     return (activeBoard?.tasks || []).filter(t => {
       if (t.status !== col || t.status === "archived") return false;
       if (filterPriority && t.priority !== filterPriority) return false;
+      if (!matchesSearch(t)) return false;
       return true;
     });
   }
@@ -292,6 +301,7 @@
               {/if}
             </div>
             <div class="board-header-right">
+              <input type="text" class="board-search" placeholder="Search tasks..." bind:value={searchQuery} />
               <div class="board-filters">
                 <button class="filter-btn" class:filter-active={!filterPriority} onclick={() => { filterPriority = ""; }}>All</button>
                 <button class="filter-btn filter-high" class:filter-active={filterPriority === "high"} onclick={() => { filterPriority = filterPriority === "high" ? "" : "high"; }}>High</button>
@@ -653,7 +663,8 @@
   .board-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: .5rem; }
   .board-header-left { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
   .board-header-left h2 { font-size: 1.2rem; margin: 0; }
-  .board-header-right { display: flex; gap: .4rem; align-items: center; }
+  .board-header-right { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+  .board-search { font-size: .8rem; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: inherit; width: 10rem; }
   .board-filters { display: flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
   .filter-btn { padding: .25rem .5rem; font-size: .72rem; font-weight: 500; background: none; border: none; border-right: 1px solid var(--border); cursor: pointer; font-family: inherit; color: var(--text-secondary); transition: background .15s, color .15s; }
   .filter-btn:last-child { border-right: none; }

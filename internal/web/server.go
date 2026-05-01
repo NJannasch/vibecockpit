@@ -148,7 +148,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	}
 
 	sub, _ := fs.Sub(staticFiles, "static")
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	mux.Handle("/", spaHandler(http.FS(sub)))
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	listener, err := net.Listen("tcp", addr)
@@ -594,6 +594,23 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func spaHandler(fsys http.FileSystem) http.Handler {
+	fileServer := http.FileServer(fsys)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clean := filepath.Clean("/" + r.URL.Path)
+		if clean != "/" {
+			if f, err := fsys.Open(clean); err == nil {
+				f.Close()
+				r.URL.Path = clean
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func openBrowser(url string) {

@@ -25,7 +25,12 @@
 
   // ─── Reactive State (Svelte 5 runes) ───
 
-  let page = $state("dashboard"); // "dashboard" | "sessions" | "settings"
+  const validPages = ["dashboard", "boards", "sessions", "costs", "inventory", "stats", "security", "mcp", "settings"];
+  function pageFromPath() {
+    const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
+    return validPages.includes(p) ? p : "dashboard";
+  }
+  let page = $state(pageFromPath());
   let openModal = $state(null); // "newProject" | "resume" | "delete" | null
   let toasts = $state([]);
   let newProjectDir = $state("");
@@ -97,6 +102,7 @@
     unsubGroup();
     unsubActiveFilters();
     stopAutoRefresh();
+    window.removeEventListener("popstate", handlePopState);
   });
 
   // ─── Theme ───
@@ -128,7 +134,12 @@
     scanning = false;
   }
 
+  function handlePopState() {
+    page = pageFromPath();
+  }
+
   onMount(async () => {
+    window.addEventListener("popstate", handlePopState);
     await loadConfig();
     applyTheme(configData.theme === "dark" ? "dark" : "light");
     loadVersionInfo();
@@ -192,6 +203,10 @@
 
   function navigateTo(p) {
     page = p;
+    const url = p === "dashboard" ? "/" : "/" + p;
+    if (window.location.pathname !== url) {
+      history.pushState({ page: p }, "", url);
+    }
     if (p === "security" && !scanPollTimer) {
       getScanStatus().then(s => {
         scanStatus = s;

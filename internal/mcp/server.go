@@ -570,7 +570,12 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		}
 		by := "mcp-agent"
 		if args.Status != "" {
-			if err := b.MoveTaskBy(args.TaskID, args.Status, by); err != nil {
+			if args.Status == "archived" {
+				if err := b.ArchiveTask(args.TaskID, by); err != nil {
+					writeError(w, req.ID, -32602, err.Error())
+					return
+				}
+			} else if err := b.MoveTaskBy(args.TaskID, args.Status, by); err != nil {
 				writeError(w, req.ID, -32602, err.Error())
 				return
 			}

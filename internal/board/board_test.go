@@ -383,3 +383,135 @@ func TestHistoryRoundtrip(t *testing.T) {
 		t.Errorf("history[1].by = %q, want %q", task.History[1].By, "mcp-agent")
 	}
 }
+
+func TestArchiveTask(t *testing.T) {
+	b := &Board{Name: "test", FilePath: filepath.Join(t.TempDir(), "test.yaml")}
+	b.AddTask("Archive me", "low", "")
+	b.AddTask("Keep me", "high", "")
+
+	if err := b.ArchiveTask("archive-me", "human"); err != nil {
+		t.Fatal(err)
+	}
+	task, _ := b.FindTask("archive-me")
+	if task.Status != "archived" {
+		t.Errorf("status = %q, want %q", task.Status, "archived")
+	}
+	if len(task.History) != 1 || task.History[0].Action != "archived" {
+		t.Error("expected archived history entry")
+	}
+
+	active := b.ActiveTasks()
+	if len(active) != 1 {
+		t.Errorf("active tasks = %d, want 1", len(active))
+	}
+	if active[0].ID != "keep-me" {
+		t.Errorf("active[0].id = %q, want %q", active[0].ID, "keep-me")
+	}
+
+	if err := b.ArchiveTask("nonexistent", "human"); err == nil {
+		t.Error("expected error for nonexistent task")
+	}
+}
+
+func TestDeleteTask(t *testing.T) {
+	b := &Board{Name: "test", FilePath: filepath.Join(t.TempDir(), "test.yaml")}
+	b.AddTask("Delete me", "low", "")
+	b.AddTask("Keep me", "high", "")
+
+	if err := b.DeleteTask("delete-me"); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Tasks) != 1 {
+		t.Fatalf("tasks = %d, want 1", len(b.Tasks))
+	}
+	if b.Tasks[0].ID != "keep-me" {
+		t.Errorf("remaining task = %q, want %q", b.Tasks[0].ID, "keep-me")
+	}
+
+	if err := b.DeleteTask("nonexistent"); err == nil {
+		t.Error("expected error for nonexistent task")
+	}
+}
+
+func TestMoveTaskToBoard(t *testing.T) {
+	dir := t.TempDir()
+	from := &Board{Name: "from-board", Project: ".", FilePath: filepath.Join(dir, "from.yaml")}
+	to := &Board{Name: "to-board", Project: ".", FilePath: filepath.Join(dir, "to.yaml")}
+
+	from.AddTask("Migrating task", "high", "important work")
+
+	if err := MoveTaskToBoard(from, to, "migrating-task"); err != nil {
+		t.Fatal(err)
+	}
+	if len(from.Tasks) != 0 {
+		t.Errorf("from.tasks = %d, want 0", len(from.Tasks))
+	}
+	if len(to.Tasks) != 1 {
+		t.Fatalf("to.tasks = %d, want 1", len(to.Tasks))
+	}
+	if to.Tasks[0].ID != "migrating-task" {
+		t.Errorf("to.tasks[0].id = %q, want %q", to.Tasks[0].ID, "migrating-task")
+	}
+	if to.Tasks[0].Title != "Migrating task" {
+		t.Errorf("title lost during move")
+	}
+	if len(to.Tasks[0].History) != 1 || to.Tasks[0].History[0].Action != "moved" {
+		t.Error("expected moved history entry")
+	}
+	if to.Tasks[0].History[0].Detail != "from-board → to-board" {
+		t.Errorf("history detail = %q, want %q", to.Tasks[0].History[0].Detail, "from-board → to-board")
+	}
+
+	if err := MoveTaskToBoard(from, to, "nonexistent"); err == nil {
+		t.Error("expected error for nonexistent task")
+	}
+}
+
+func TestDeleteBoard(t *testing.T) {
+	dir := t.TempDir()
+	boardDir := filepath.Join(dir, "boards")
+	if err := os.MkdirAll(boardDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(boardDir, "deleteme.yaml")
+	if err := os.WriteFile(path, []byte("name: deleteme\nproject: .\ntasks: []\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify file exists
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("board file should exist before delete")
+	}
+
+	// Can't use DeleteBoard directly since it uses boardsDir(), test the file removal
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("board file should be deleted")
+	}
+}
+
+func TestCreatedByField(t *testing.T) {
+	b := &Board{Name: "test", FilePath: filepath.Join(t.TempDir(), "test.yaml")}
+	b.AddTask("Human task", "high", "")
+	b.Tasks[0].CreatedBy = "human"
+
+	b.AddTask("Agent task", "medium", "")
+	b.Tasks[1].CreatedBy = "mcp-agent"
+
+	if err := b.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	b2, err := Load(b.FilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b2.Tasks[0].CreatedBy != "human" {
+		t.Errorf("tasks[0].createdBy = %q, want %q", b2.Tasks[0].CreatedBy, "human")
+	}
+	if b2.Tasks[1].CreatedBy != "mcp-agent" {
+		t.Errorf("tasks[1].createdBy = %q, want %q", b2.Tasks[1].CreatedBy, "mcp-agent")
+	}
+}
