@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"vibecockpit/internal/audit"
+	"vibecockpit/internal/board"
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
@@ -133,13 +134,21 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/inventory/file", s.handleInventoryFile)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/mcp-audit", s.handleMCPAudit)
+	mux.HandleFunc("GET /api/boards", s.handleGetBoards)
+	mux.HandleFunc("GET /api/boards/{name}", s.handleGetBoard)
+	mux.HandleFunc("POST /api/boards", s.handleCreateBoard)
+	mux.HandleFunc("POST /api/boards/{name}/tasks", s.handleAddTask)
+	mux.HandleFunc("PUT /api/boards/{name}/tasks/{id}", s.handleUpdateTask)
+	mux.HandleFunc("POST /api/boards/{name}/tasks/{id}/move", s.handleMoveTaskToBoard)
+	mux.HandleFunc("DELETE /api/boards/{name}", s.handleDeleteBoard)
+	mux.HandleFunc("DELETE /api/boards/{name}/tasks/{id}", s.handleDeleteTask)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
 	}
 
 	sub, _ := fs.Sub(staticFiles, "static")
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	mux.Handle("/", spaHandler(http.FS(sub)))
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	listener, err := net.Listen("tcp", addr)
@@ -587,6 +596,23 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+func spaHandler(fsys http.FileSystem) http.Handler {
+	fileServer := http.FileServer(fsys)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clean := filepath.Clean("/" + r.URL.Path)
+		if clean != "/" {
+			if f, err := fsys.Open(clean); err == nil {
+				f.Close()
+				r.URL.Path = clean
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
+}
+
 func openBrowser(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
@@ -818,6 +844,212 @@ func (s *server) handleMCPAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
+}
+
+func (s *server) handleGetBoards(w http.ResponseWriter, _ *http.Request) {
+	boards, err := board.Discover(s.cfg.NewProjectDir)
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(boards)
+}
+
+func (s *server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, name)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(b)
+}
+
+func (s *server) handleCreateBoard(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name    string `json:"name"`
+		Project string `json:"project"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		jsonError(w, "name required", 400)
+		return
+	}
+	if req.Project == "" {
+		req.Project = "."
+	}
+	b, err := board.CreateBoard(req.Name, req.Project)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(b)
+}
+
+func (s *server) handleAddTask(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var req struct {
+		Title       string `json:"title"`
+		Priority    string `json:"priority"`
+		Description string `json:"description"`
+		Tool        string `json:"tool"`
+		Model       string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Title == "" {
+		jsonError(w, "title required", 400)
+		return
+	}
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, name)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	b.AddTask(req.Title, req.Priority, req.Description)
+	task := &b.Tasks[len(b.Tasks)-1]
+	task.Tool = req.Tool
+	task.Model = req.Model
+	task.CreatedBy = "human"
+	if err := b.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(task)
+}
+
+func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
+	boardName := r.PathValue("name")
+	taskID := r.PathValue("id")
+	var req map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", 400)
+		return
+	}
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, boardName)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	t, _ := b.FindTask(taskID)
+	if t == nil {
+		jsonError(w, "task not found", 404)
+		return
+	}
+	by := "human"
+	if v, ok := req["status"].(string); ok && v != "" {
+		if v == "archived" {
+			if err := b.ArchiveTask(taskID, by); err != nil {
+				jsonError(w, err.Error(), 400)
+				return
+			}
+		} else if err := b.MoveTaskBy(taskID, v, by); err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	if v, ok := req["title"].(string); ok && v != t.Title {
+		t.RecordHistory("title", by, t.Title+" → "+v)
+		t.Title = v
+	}
+	if v, ok := req["priority"].(string); ok && v != t.Priority {
+		t.RecordHistory("priority", by, t.Priority+" → "+v)
+		t.Priority = v
+	}
+	if v, ok := req["description"].(string); ok {
+		t.Description = v
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if v, ok := req["tool"].(string); ok && v != t.Tool {
+		t.RecordHistory("tool", by, t.Tool+" → "+v)
+		t.Tool = v
+	}
+	if v, ok := req["model"].(string); ok && v != t.Model {
+		t.RecordHistory("model", by, t.Model+" → "+v)
+		t.Model = v
+	}
+	if v, ok := req["summary"].(string); ok {
+		t.Summary = v
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if err := b.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(t)
+}
+
+func (s *server) handleMoveTaskToBoard(w http.ResponseWriter, r *http.Request) {
+	fromName := r.PathValue("name")
+	taskID := r.PathValue("id")
+	var req struct {
+		ToBoard string `json:"toBoard"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ToBoard == "" {
+		jsonError(w, "toBoard required", 400)
+		return
+	}
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	from := board.FindBoard(boards, fromName)
+	if from == nil {
+		jsonError(w, "source board not found", 404)
+		return
+	}
+	to := board.FindBoard(boards, req.ToBoard)
+	if to == nil {
+		jsonError(w, "target board not found", 404)
+		return
+	}
+	if err := board.MoveTaskToBoard(from, to, taskID); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	if err := from.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	if err := to.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleDeleteBoard(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := board.DeleteBoard(name, s.cfg.NewProjectDir); err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	boardName := r.PathValue("name")
+	taskID := r.PathValue("id")
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, boardName)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	if err := b.DeleteTask(taskID); err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	if err := b.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 // getLatestVersion returns the cached latest release tag, refreshing it

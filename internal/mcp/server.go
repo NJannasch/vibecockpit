@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"vibecockpit/internal/audit"
+	"vibecockpit/internal/board"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/provider"
@@ -197,6 +198,130 @@ func (s *Server) toolDefinitions() []map[string]any {
 				},
 			},
 		},
+		{
+			"name":        "list_boards",
+			"description": "List all kanban boards with task counts per status column.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		{
+			"name":        "list_tasks",
+			"description": "List tasks from a kanban board, optionally filtered by status or priority.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": map[string]any{
+						"type":        "string",
+						"description": "Board name. Required.",
+					},
+					"status": map[string]any{
+						"type":        "string",
+						"description": "Filter by status (backlog, claimed, in-progress, review, done). Omit for all.",
+					},
+					"priority": map[string]any{
+						"type":        "string",
+						"description": "Filter by priority (high, medium, low). Omit for all.",
+					},
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "get_task",
+			"description": "Get full details of a task including description, acceptance criteria, history, cost, and linked session.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": map[string]any{
+						"type":        "string",
+						"description": "Board name.",
+					},
+					"task_id": map[string]any{
+						"type":        "string",
+						"description": "Task ID.",
+					},
+				},
+				"required": []string{"board", "task_id"},
+			},
+		},
+		{
+			"name":        "update_task",
+			"description": "Update a task's status, priority, tool, model, summary, or other fields. Use this to move tasks between columns, assign tools, or report progress.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": map[string]any{
+						"type":        "string",
+						"description": "Board name.",
+					},
+					"task_id": map[string]any{
+						"type":        "string",
+						"description": "Task ID.",
+					},
+					"status": map[string]any{
+						"type":        "string",
+						"description": "New status (backlog, claimed, in-progress, review, done).",
+					},
+					"priority": map[string]any{
+						"type":        "string",
+						"description": "New priority (high, medium, low).",
+					},
+					"tool": map[string]any{
+						"type":        "string",
+						"description": "Tool to use for this task.",
+					},
+					"model": map[string]any{
+						"type":        "string",
+						"description": "Model to use for this task.",
+					},
+					"summary": map[string]any{
+						"type":        "string",
+						"description": "Agent summary of work done.",
+					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Updated task description.",
+					},
+				},
+				"required": []string{"board", "task_id"},
+			},
+		},
+		{
+			"name":        "create_task",
+			"description": "Create a new task on a kanban board.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": map[string]any{
+						"type":        "string",
+						"description": "Board name.",
+					},
+					"title": map[string]any{
+						"type":        "string",
+						"description": "Task title.",
+					},
+					"priority": map[string]any{
+						"type":        "string",
+						"description": "Priority (high, medium, low). Default: medium.",
+					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Task description with details and context.",
+					},
+					"tool": map[string]any{
+						"type":        "string",
+						"description": "Tool to use (claude, codex, etc.).",
+					},
+					"model": map[string]any{
+						"type":        "string",
+						"description": "Model to use.",
+					},
+				},
+				"required": []string{"board", "title"},
+			},
+		},
 	}
 }
 
@@ -345,6 +470,176 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		}
 
 		result = out
+
+	case "list_boards":
+		boards, err := board.Discover(s.workspaceDir)
+		if err != nil {
+			writeError(w, req.ID, -32602, "Failed to discover boards: "+err.Error())
+			return
+		}
+		type boardSummary struct {
+			Name    string         `json:"name"`
+			Project string         `json:"project"`
+			Tasks   int            `json:"tasks"`
+			Counts  map[string]int `json:"counts"`
+		}
+		out := make([]boardSummary, len(boards))
+		for i, b := range boards {
+			out[i] = boardSummary{Name: b.Name, Project: b.Project, Tasks: len(b.Tasks), Counts: b.StatusCounts()}
+		}
+		result = out
+		count = len(out)
+
+	case "list_tasks":
+		var args struct {
+			Board    string `json:"board"`
+			Status   string `json:"status"`
+			Priority string `json:"priority"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		boards, _ := board.Discover(s.workspaceDir)
+		b := board.FindBoard(boards, args.Board)
+		if b == nil {
+			writeError(w, req.ID, -32602, "Board not found: "+args.Board)
+			return
+		}
+		var tasks []board.Task
+		for _, t := range b.Tasks {
+			if args.Status != "" && t.Status != args.Status {
+				continue
+			}
+			if args.Priority != "" && t.Priority != args.Priority {
+				continue
+			}
+			tasks = append(tasks, t)
+		}
+		result = tasks
+		count = len(tasks)
+
+	case "get_task":
+		var args struct {
+			Board  string `json:"board"`
+			TaskID string `json:"task_id"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		boards, _ := board.Discover(s.workspaceDir)
+		b := board.FindBoard(boards, args.Board)
+		if b == nil {
+			writeError(w, req.ID, -32602, "Board not found: "+args.Board)
+			return
+		}
+		t, _ := b.FindTask(args.TaskID)
+		if t == nil {
+			writeError(w, req.ID, -32602, "Task not found: "+args.TaskID)
+			return
+		}
+		result = t
+		count = 1
+
+	case "update_task":
+		var args struct {
+			Board       string `json:"board"`
+			TaskID      string `json:"task_id"`
+			Status      string `json:"status"`
+			Priority    string `json:"priority"`
+			Tool        string `json:"tool"`
+			Model       string `json:"model"`
+			Summary     string `json:"summary"`
+			Description string `json:"description"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		boards, _ := board.Discover(s.workspaceDir)
+		b := board.FindBoard(boards, args.Board)
+		if b == nil {
+			writeError(w, req.ID, -32602, "Board not found: "+args.Board)
+			return
+		}
+		t, _ := b.FindTask(args.TaskID)
+		if t == nil {
+			writeError(w, req.ID, -32602, "Task not found: "+args.TaskID)
+			return
+		}
+		by := "mcp-agent"
+		if args.Status != "" {
+			if args.Status == "archived" {
+				if err := b.ArchiveTask(args.TaskID, by); err != nil {
+					writeError(w, req.ID, -32602, err.Error())
+					return
+				}
+			} else if err := b.MoveTaskBy(args.TaskID, args.Status, by); err != nil {
+				writeError(w, req.ID, -32602, err.Error())
+				return
+			}
+		}
+		if args.Priority != "" && args.Priority != t.Priority {
+			t.RecordHistory("priority", by, t.Priority+" → "+args.Priority)
+			t.Priority = args.Priority
+		}
+		if args.Tool != "" && args.Tool != t.Tool {
+			t.RecordHistory("tool", by, t.Tool+" → "+args.Tool)
+			t.Tool = args.Tool
+		}
+		if args.Model != "" && args.Model != t.Model {
+			t.RecordHistory("model", by, t.Model+" → "+args.Model)
+			t.Model = args.Model
+		}
+		if args.Summary != "" {
+			t.Summary = args.Summary
+			t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		if args.Description != "" {
+			t.Description = args.Description
+			t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		if err := b.Save(); err != nil {
+			writeError(w, req.ID, -32602, "Failed to save: "+err.Error())
+			return
+		}
+		result = t
+		count = 1
+
+	case "create_task":
+		var args struct {
+			Board       string `json:"board"`
+			Title       string `json:"title"`
+			Priority    string `json:"priority"`
+			Description string `json:"description"`
+			Tool        string `json:"tool"`
+			Model       string `json:"model"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		boards, _ := board.Discover(s.workspaceDir)
+		b := board.FindBoard(boards, args.Board)
+		if b == nil {
+			writeError(w, req.ID, -32602, "Board not found: "+args.Board)
+			return
+		}
+		if args.Priority == "" {
+			args.Priority = "medium"
+		}
+		b.AddTask(args.Title, args.Priority, args.Description)
+		t := &b.Tasks[len(b.Tasks)-1]
+		t.Tool = args.Tool
+		t.Model = args.Model
+		t.CreatedBy = "mcp-agent"
+		if err := b.Save(); err != nil {
+			writeError(w, req.ID, -32602, "Failed to save: "+err.Error())
+			return
+		}
+		result = t
+		count = 1
 
 	default:
 		writeError(w, req.ID, -32602, fmt.Sprintf("Unknown tool: %s", call.Name))

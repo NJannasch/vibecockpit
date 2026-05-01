@@ -21,10 +21,16 @@
   import CostsDashboard from "./components/CostsDashboard.svelte";
   import ToolInventory from "./components/ToolInventory.svelte";
   import AdoptionTimeline from "./components/AdoptionTimeline.svelte";
+  import BoardView from "./components/BoardView.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
 
-  let page = $state("dashboard"); // "dashboard" | "sessions" | "settings"
+  const validPages = ["dashboard", "boards", "sessions", "costs", "inventory", "stats", "security", "mcp", "settings"];
+  function pageFromPath() {
+    const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
+    return validPages.includes(p) ? p : "dashboard";
+  }
+  let page = $state(pageFromPath());
   let openModal = $state(null); // "newProject" | "resume" | "delete" | null
   let toasts = $state([]);
   let newProjectDir = $state("");
@@ -96,6 +102,7 @@
     unsubGroup();
     unsubActiveFilters();
     stopAutoRefresh();
+    window.removeEventListener("popstate", handlePopState);
   });
 
   // ─── Theme ───
@@ -127,7 +134,12 @@
     scanning = false;
   }
 
+  function handlePopState() {
+    page = pageFromPath();
+  }
+
   onMount(async () => {
+    window.addEventListener("popstate", handlePopState);
     await loadConfig();
     applyTheme(configData.theme === "dark" ? "dark" : "light");
     loadVersionInfo();
@@ -191,6 +203,10 @@
 
   function navigateTo(p) {
     page = p;
+    const url = p === "dashboard" ? "/" : "/" + p;
+    if (window.location.pathname !== url) {
+      history.pushState({ page: p }, "", url);
+    }
     if (p === "security" && !scanPollTimer) {
       getScanStatus().then(s => {
         scanStatus = s;
@@ -683,6 +699,7 @@
   </div>
   <nav class="header-nav">
     <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
+    <button class="nav-btn" class:active={page === "boards"} onclick={() => navigateTo("boards")}>Boards</button>
     <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
     <button class="nav-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>Costs</button>
     <button class="nav-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>Inventory</button>
@@ -1006,6 +1023,10 @@
     VibeCockpit scans your local AI tool directories (e.g. <code>~/.claude</code>, <code>~/.codex</code>) to discover sessions, configs, and extensions. All analysis happens entirely on your machine — no data is sent anywhere.
   </div>
 </main>
+{:else if page === "boards"}
+  <main>
+    <BoardView />
+  </main>
 {:else if page === "costs"}
   <main>
     <CostsDashboard sessions={sessionList} />
