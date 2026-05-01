@@ -249,19 +249,19 @@
     dragOverCol = null;
   }
 
+  let activeSessions = $derived(sessions.filter(s => s.isActive).length);
+  let totalCostAll = $derived(sessions.reduce((sum, s) => sum + (s.estCostUsd || 0), 0));
+  let providerCount = $derived([...new Set(sessions.map(s => s.provider))].length);
+
   onMount(() => { load(); loadConfig(); });
 </script>
 
-{@const activeSessions = sessions.filter(s => s.isActive).length}
-{@const totalSessions = sessions.length}
-{@const totalCostAll = sessions.reduce((sum, s) => sum + (s.estCostUsd || 0), 0)}
-{@const providers = [...new Set(sessions.map(s => s.provider))].length}
 <div class="board-page">
   {#if sessions.length > 0}
   <div class="status-bar">
-    <div class="status-item"><span class="status-value">{totalSessions}</span><span class="status-label">sessions</span></div>
+    <div class="status-item"><span class="status-value">{sessions.length}</span><span class="status-label">sessions</span></div>
     <div class="status-item"><span class="status-value" class:status-active={activeSessions > 0}>{activeSessions}</span><span class="status-label">active</span></div>
-    <div class="status-item"><span class="status-value">{providers}</span><span class="status-label">providers</span></div>
+    <div class="status-item"><span class="status-value">{providerCount}</span><span class="status-label">providers</span></div>
     <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">total cost</span></div>
   </div>
   {/if}
