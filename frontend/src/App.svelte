@@ -30,7 +30,7 @@
   function pageFromPath() {
     const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
     if (redirects[p]) return redirects[p];
-    return validPages.includes(p) ? p : "boards";
+    return validPages.includes(p) ? p : "dashboard";
   }
   let page = $state(pageFromPath());
   let openModal = $state(null); // "newProject" | "resume" | "delete" | null
@@ -205,7 +205,7 @@
 
   function navigateTo(p) {
     page = p;
-    const url = p === "boards" ? "/" : "/" + p;
+    const url = p === "dashboard" ? "/" : "/" + p;
     if (window.location.pathname !== url) {
       history.pushState({ page: p }, "", url);
     }
@@ -700,8 +700,8 @@
     {/if}
   </div>
   <nav class="header-nav">
-    <button class="nav-btn" class:active={page === "boards"} onclick={() => navigateTo("boards")}>Boards</button>
     <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
+    <button class="nav-btn" class:active={page === "boards"} onclick={() => navigateTo("boards")}>Boards</button>
     <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
     <button class="nav-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>Costs</button>
     <button class="nav-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>Inventory</button>

@@ -1,7 +1,14 @@
 <script>
+  import { onMount } from "svelte";
   import { providerColors, providerLabels, relativeTime, computeDashboardData } from "../lib/utils.js";
+  import { fetchBoards } from "../lib/api.js";
 
   let { sessions, onnavigate, onlaunch, onfilterby } = $props();
+  let boards = $state([]);
+
+  onMount(async () => {
+    try { boards = await fetchBoards(); } catch { /* optional */ }
+  });
 
   let dashboardData = $derived.by(() => {
     const data = computeDashboardData(sessions);
@@ -112,6 +119,35 @@
 
     <!-- Yoke -->
     <div class="yoke"></div>
+  </div>
+
+  <!-- Boards banner -->
+  <div class="boards-banner">
+    <div class="boards-banner-header">
+      <h3 class="recent-heading">Boards</h3>
+      <button class="boards-banner-link" onclick={() => onnavigate("boards")}>
+        {boards.length > 0 ? "View all" : "Create board"} <span>&rarr;</span>
+      </button>
+    </div>
+    {#if boards.length > 0}
+      <div class="boards-banner-list">
+        {#each boards as b}
+          {@const active = (b.tasks || []).filter(t => t.status !== "archived")}
+          {@const working = active.filter(t => t.status === "in-progress").length}
+          {@const done = active.filter(t => t.status === "done").length}
+          <button class="boards-banner-card" onclick={() => onnavigate("boards")}>
+            <span class="boards-banner-name">{b.name}</span>
+            <span class="boards-banner-stats">
+              {active.length} tasks
+              {#if working > 0}<span class="boards-banner-active">&#9679; {working}</span>{/if}
+              {#if done > 0}<span class="boards-banner-done">&#10003; {done}</span>{/if}
+            </span>
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <p class="boards-banner-empty">No boards yet — create one to track agentic tasks.</p>
+    {/if}
   </div>
 
   <!-- Recent flights -->
@@ -331,6 +367,23 @@
     border-radius: 50%;
     margin: 0 auto;
   }
+
+  /* ─── Boards banner ─── */
+  .boards-banner { margin-bottom: 1.5rem; }
+  .boards-banner-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
+  .boards-banner-link { background: none; border: none; cursor: pointer; font-family: inherit; font-size: .78rem; color: var(--primary); padding: 0; }
+  .boards-banner-link:hover { text-decoration: underline; }
+  .boards-banner-list { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .boards-banner-card { display: flex; align-items: center; justify-content: space-between; gap: .8rem;
+    padding: .5rem .8rem; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; color: var(--text);
+    transition: border-color .15s; flex: 1; min-width: 160px; text-align: left; }
+  .boards-banner-card:hover { border-color: var(--primary); }
+  .boards-banner-name { font-size: .85rem; font-weight: 600; }
+  .boards-banner-stats { font-size: .72rem; color: var(--text-secondary); display: flex; gap: .4rem; align-items: center; }
+  .boards-banner-active { color: var(--success); }
+  .boards-banner-done { color: var(--text-muted); }
+  .boards-banner-empty { font-size: .82rem; color: var(--text-muted); margin: 0; }
 
   /* ─── Recent ─── */
   .recent {
