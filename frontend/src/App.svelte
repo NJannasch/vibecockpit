@@ -25,10 +25,12 @@
 
   // ─── Reactive State (Svelte 5 runes) ───
 
-  const validPages = ["dashboard", "boards", "sessions", "costs", "inventory", "stats", "security", "mcp", "settings"];
+  const validPages = ["dashboard", "boards", "sessions", "costs", "inventory", "settings"];
+  const redirects = { stats: "dashboard", security: "inventory", mcp: "settings" };
   function pageFromPath() {
     const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
-    return validPages.includes(p) ? p : "dashboard";
+    if (redirects[p]) return redirects[p];
+    return validPages.includes(p) ? p : "boards";
   }
   let page = $state(pageFromPath());
   let openModal = $state(null); // "newProject" | "resume" | "delete" | null
@@ -203,7 +205,7 @@
 
   function navigateTo(p) {
     page = p;
-    const url = p === "dashboard" ? "/" : "/" + p;
+    const url = p === "boards" ? "/" : "/" + p;
     if (window.location.pathname !== url) {
       history.pushState({ page: p }, "", url);
     }
@@ -698,18 +700,11 @@
     {/if}
   </div>
   <nav class="header-nav">
-    <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
     <button class="nav-btn" class:active={page === "boards"} onclick={() => navigateTo("boards")}>Boards</button>
+    <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
     <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
     <button class="nav-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>Costs</button>
     <button class="nav-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>Inventory</button>
-    <button class="nav-btn" class:active={page === "stats"} onclick={() => navigateTo("stats")}>Stats</button>
-    {#if configData.enableScanner}
-      <button class="nav-btn" class:active={page === "security"} onclick={() => navigateTo("security")}>Security</button>
-    {/if}
-    {#if configData.enableMcp}
-      <button class="nav-btn" class:active={page === "mcp"} onclick={() => navigateTo("mcp")}>MCP</button>
-    {/if}
     <button class="nav-btn" class:active={page === "settings"} onclick={() => navigateTo("settings")}>Settings</button>
   </nav>
   <div class="header-actions">
@@ -751,6 +746,9 @@
       onlaunch={(id, prov) => launch(id, prov)}
       onfilterby={filterByProvider}
     />
+    <div style="max-width:900px;margin:0 auto;padding:0 1rem 2rem">
+      <AdoptionTimeline />
+    </div>
   </main>
 {:else if page === "sessions"}
 <!-- Search Bar -->
@@ -1025,7 +1023,7 @@
 </main>
 {:else if page === "boards"}
   <main>
-    <BoardView />
+    <BoardView sessions={sessionList} />
   </main>
 {:else if page === "costs"}
   <main>
@@ -1034,22 +1032,18 @@
 {:else if page === "inventory"}
   <main>
     <ToolInventory />
-  </main>
-{:else if page === "stats"}
-  <main>
-    <AdoptionTimeline />
-  </main>
-{:else if page === "security"}
-  <main>
-    {@render securityPage()}
-  </main>
-{:else if page === "mcp"}
-  <main>
-    {@render mcpPage()}
+    {#if configData.enableScanner}
+      {@render securityPage()}
+    {/if}
   </main>
 {:else if page === "settings"}
   <main>
     {@render settingsPage()}
+    {#if configData.enableMcp}
+      <div style="max-width:900px;margin:0 auto;padding:0 1rem 2rem">
+        {@render mcpPage()}
+      </div>
+    {/if}
   </main>
 {/if}
 
