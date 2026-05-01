@@ -870,12 +870,20 @@ func (s *server) enrichBoardCosts(boards []*board.Board) {
 	for _, b := range boards {
 		for i := range b.Tasks {
 			t := &b.Tasks[i]
-			if len(t.Sessions) > 0 && t.Cost == 0 {
-				var total float64
-				for _, sid := range t.Sessions {
-					total += sessionCosts[sid]
+			if len(t.Sessions) == 0 {
+				continue
+			}
+			var currentTotal float64
+			for _, sid := range t.Sessions {
+				currentTotal += sessionCosts[sid]
+			}
+			if t.CostAtStart > 0 {
+				t.Cost = currentTotal - t.CostAtStart
+				if t.Cost < 0 {
+					t.Cost = 0
 				}
-				t.Cost = total
+			} else if t.Cost == 0 {
+				t.Cost = currentTotal
 			}
 		}
 	}

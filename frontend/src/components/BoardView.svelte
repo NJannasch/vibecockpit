@@ -278,6 +278,10 @@
       <p style="font-size:.78rem;color:var(--text-muted);margin-top:.8rem">
         Or via CLI: <code>vibecockpit board create my-project --project ~/Projects/my-project</code>
       </p>
+      <div class="board-info-tip">
+        <strong>MCP-powered</strong> — AI agents can create tasks, claim work, and report progress via MCP.
+        Sessions are auto-linked to tasks, so you see cost per feature. Enable MCP in Settings to get started.
+      </div>
     </div>
   {:else}
     <!-- Board list + kanban layout -->
@@ -291,6 +295,7 @@
           {@const isActive = activeBoard?.name === b.name}
           {@const activeTasks = (b.tasks || []).filter(t => t.status !== "archived")}
           {@const workingCount = (b.tasks || []).filter(t => t.status === "in-progress").length}
+          {@const boardCost = activeTasks.reduce((sum, t) => sum + (t.cost || 0), 0)}
           <div class="board-card-wrap">
             <button class="board-card" class:board-card-active={isActive} onclick={() => selectBoard(b.name)}>
               <div class="board-card-name">{b.name}</div>
@@ -299,6 +304,9 @@
                 <span>{activeTasks.length} tasks</span>
                 {#if workingCount > 0}
                   <span class="board-card-active-dot">&#9679; {workingCount} active</span>
+                {/if}
+                {#if boardCost > 0}
+                  <span class="board-card-cost">${boardCost.toFixed(2)}</span>
                 {/if}
               </div>
             </button>
@@ -397,6 +405,11 @@
           </div>
         </div>
       {/each}
+    </div>
+
+    <div class="board-info-tip">
+      <strong>MCP-connected</strong> — AI agents can pull tasks, report progress, and link sessions via MCP.
+      Costs are tracked per task based on linked session token usage. Enable MCP in Settings and add <code>.mcp.json</code> to your project.
     </div>
 
     {#if archivedTasks().length > 0}
@@ -672,6 +685,10 @@
   .status-label { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
 
   .board-empty { text-align: center; padding: 3rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .board-info-tip { font-size: .78rem; color: var(--text-muted); padding: .6rem .8rem; margin-top: .8rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); line-height: 1.5; }
+  .board-info-tip strong { color: var(--text-secondary); }
+  .board-info-tip code { font-size: .72rem; background: var(--bg); padding: .1rem .3rem; border-radius: 3px; }
 
   /* Layout: sidebar + main */
   .board-layout { display: flex; gap: 1rem; min-height: 500px; }
@@ -686,6 +703,7 @@
   .board-card-project { font-size: .7rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: .2rem; }
   .board-card-stats { font-size: .7rem; color: var(--text-secondary); display: flex; gap: .5rem; }
   .board-card-active-dot { color: var(--success); }
+  .board-card-cost { color: var(--warning, #f59e0b); font-weight: 600; }
   .board-card-delete { position: absolute; top: .3rem; right: .3rem; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: .7rem; padding: .1rem .3rem; border-radius: 3px; opacity: 0; transition: opacity .15s, color .15s; }
   .board-card-wrap:hover .board-card-delete { opacity: 1; }
   .board-card-delete:hover { color: var(--danger); background: var(--danger-dim, rgba(239,68,68,.1)); }

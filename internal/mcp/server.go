@@ -543,6 +543,17 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			writeError(w, req.ID, -32602, "Task not found: "+args.TaskID)
 			return
 		}
+		if len(t.Sessions) > 0 {
+			currentCost := s.computeSessionCost(t.Sessions)
+			if t.CostAtStart > 0 {
+				t.Cost = currentCost - t.CostAtStart
+				if t.Cost < 0 {
+					t.Cost = 0
+				}
+			} else if t.Cost == 0 {
+				t.Cost = currentCost
+			}
+		}
 		result = t
 		count = 1
 
