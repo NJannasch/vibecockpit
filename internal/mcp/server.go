@@ -612,6 +612,16 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 				t.LinkSession(sid, by)
 			}
 		}
+		if args.Status == "in-progress" && t.CostAtStart == 0 && len(t.Sessions) > 0 {
+			t.CostAtStart = s.computeSessionCost(t.Sessions)
+		}
+		if (args.Status == "done" || args.Status == "review") && len(t.Sessions) > 0 {
+			t.CostAtEnd = s.computeSessionCost(t.Sessions)
+			t.Cost = t.CostAtEnd - t.CostAtStart
+			if t.Cost < 0 {
+				t.Cost = 0
+			}
+		}
 		if err := b.Save(); err != nil {
 			writeError(w, req.ID, -32602, "Failed to save: "+err.Error())
 			return
@@ -819,6 +829,29 @@ func (s *Server) getSessionDetail(sessionID string) (any, int) {
 		}
 	}
 	return map[string]string{"error": "session not found"}, 0
+}
+
+func (s *Server) computeSessionCost(sessionIDs []string) float64 {
+	if len(sessionIDs) == 0 {
+		return 0
+	}
+	idSet := make(map[string]bool)
+	for _, id := range sessionIDs {
+		idSet[id] = true
+	}
+	var total float64
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, sess := range sessions {
+			if idSet[sess.ID] {
+				total += costs.EstimateCost(sess.Model, sess.Tokens)
+			}
+		}
+	}
+	return total
 }
 
 func (s *Server) findActiveSessionsForProject(projectPath string) []string {

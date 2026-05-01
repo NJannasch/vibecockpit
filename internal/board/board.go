@@ -40,6 +40,8 @@ type Task struct {
 	Started     string   `yaml:"started,omitempty" json:"started,omitempty"`
 	Completed   string   `yaml:"completed,omitempty" json:"completed,omitempty"`
 	Cost        float64  `yaml:"cost,omitempty" json:"cost,omitempty"`
+	CostAtStart float64  `yaml:"cost_at_start,omitempty" json:"costAtStart,omitempty"`
+	CostAtEnd   float64  `yaml:"cost_at_end,omitempty" json:"costAtEnd,omitempty"`
 	Summary     string   `yaml:"summary,omitempty" json:"summary,omitempty"`
 	CreatedBy   string         `yaml:"created_by,omitempty" json:"createdBy,omitempty"`
 	CreatedAt   string         `yaml:"created_at,omitempty" json:"createdAt,omitempty"`
