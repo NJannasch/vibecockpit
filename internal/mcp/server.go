@@ -607,6 +607,10 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		}
 		if args.SessionID != "" {
 			t.LinkSession(args.SessionID, by)
+		} else if args.Status == "in-progress" || args.Status == "claimed" {
+			for _, sid := range s.findActiveSessionsForProject(b.Project) {
+				t.LinkSession(sid, by)
+			}
 		}
 		if err := b.Save(); err != nil {
 			writeError(w, req.ID, -32602, "Failed to save: "+err.Error())
@@ -815,6 +819,32 @@ func (s *Server) getSessionDetail(sessionID string) (any, int) {
 		}
 	}
 	return map[string]string{"error": "session not found"}, 0
+}
+
+func (s *Server) findActiveSessionsForProject(projectPath string) []string {
+	if projectPath == "" {
+		return nil
+	}
+	expanded := projectPath
+	if strings.HasPrefix(expanded, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			expanded = home + expanded[1:]
+		}
+	}
+
+	var ids []string
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, sess := range sessions {
+			if sess.IsActive && (sess.ProjectPath == projectPath || sess.ProjectPath == expanded) {
+				ids = append(ids, sess.ID)
+			}
+		}
+	}
+	return ids
 }
 
 // JSON-RPC types
