@@ -159,6 +159,32 @@ export async function addBoardTask(boardName, title, priority, description, tool
   return res.json();
 }
 
+export async function deleteBoard(boardName) {
+  const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`Failed to delete board: ${res.statusText}`);
+  return res.json();
+}
+
+export async function deleteBoardTask(boardName, taskId) {
+  const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`Failed to delete task: ${res.statusText}`);
+  return res.json();
+}
+
+export async function moveTaskToBoard(fromBoard, taskId, toBoard) {
+  const res = await fetch(`/api/boards/${encodeURIComponent(fromBoard)}/tasks/${encodeURIComponent(taskId)}/move`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ toBoard }),
+  });
+  if (!res.ok) throw new Error(`Failed to move task: ${res.statusText}`);
+  return res.json();
+}
+
 export async function updateBoardTask(boardName, taskId, updates) {
   const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/tasks/${encodeURIComponent(taskId)}`, {
     method: "PUT",

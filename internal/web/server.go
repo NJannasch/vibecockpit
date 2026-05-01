@@ -139,6 +139,9 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("POST /api/boards", s.handleCreateBoard)
 	mux.HandleFunc("POST /api/boards/{name}/tasks", s.handleAddTask)
 	mux.HandleFunc("PUT /api/boards/{name}/tasks/{id}", s.handleUpdateTask)
+	mux.HandleFunc("POST /api/boards/{name}/tasks/{id}/move", s.handleMoveTaskToBoard)
+	mux.HandleFunc("DELETE /api/boards/{name}", s.handleDeleteBoard)
+	mux.HandleFunc("DELETE /api/boards/{name}/tasks/{id}", s.handleDeleteTask)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
@@ -922,7 +925,12 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	by := "human"
 	if v, ok := req["status"].(string); ok && v != "" {
-		if err := b.MoveTaskBy(taskID, v, by); err != nil {
+		if v == "archived" {
+			if err := b.ArchiveTask(taskID, by); err != nil {
+				jsonError(w, err.Error(), 400)
+				return
+			}
+		} else if err := b.MoveTaskBy(taskID, v, by); err != nil {
 			jsonError(w, err.Error(), 400)
 			return
 		}
@@ -957,6 +965,74 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(t)
+}
+
+func (s *server) handleMoveTaskToBoard(w http.ResponseWriter, r *http.Request) {
+	fromName := r.PathValue("name")
+	taskID := r.PathValue("id")
+	var req struct {
+		ToBoard string `json:"toBoard"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ToBoard == "" {
+		jsonError(w, "toBoard required", 400)
+		return
+	}
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	from := board.FindBoard(boards, fromName)
+	if from == nil {
+		jsonError(w, "source board not found", 404)
+		return
+	}
+	to := board.FindBoard(boards, req.ToBoard)
+	if to == nil {
+		jsonError(w, "target board not found", 404)
+		return
+	}
+	if err := board.MoveTaskToBoard(from, to, taskID); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	if err := from.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	if err := to.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleDeleteBoard(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := board.DeleteBoard(name, s.cfg.NewProjectDir); err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	boardName := r.PathValue("name")
+	taskID := r.PathValue("id")
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, boardName)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	if err := b.DeleteTask(taskID); err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	if err := b.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 // getLatestVersion returns the cached latest release tag, refreshing it

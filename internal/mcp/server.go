@@ -280,6 +280,10 @@ func (s *Server) toolDefinitions() []map[string]any {
 						"type":        "string",
 						"description": "Agent summary of work done.",
 					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Updated task description.",
+					},
 				},
 				"required": []string{"board", "task_id"},
 			},
@@ -540,13 +544,14 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 
 	case "update_task":
 		var args struct {
-			Board    string `json:"board"`
-			TaskID   string `json:"task_id"`
-			Status   string `json:"status"`
-			Priority string `json:"priority"`
-			Tool     string `json:"tool"`
-			Model    string `json:"model"`
-			Summary  string `json:"summary"`
+			Board       string `json:"board"`
+			TaskID      string `json:"task_id"`
+			Status      string `json:"status"`
+			Priority    string `json:"priority"`
+			Tool        string `json:"tool"`
+			Model       string `json:"model"`
+			Summary     string `json:"summary"`
+			Description string `json:"description"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
 			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
@@ -584,6 +589,10 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		}
 		if args.Summary != "" {
 			t.Summary = args.Summary
+			t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		if args.Description != "" {
+			t.Description = args.Description
 			t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		}
 		if err := b.Save(); err != nil {

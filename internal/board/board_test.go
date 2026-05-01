@@ -277,3 +277,109 @@ func TestGenerateID(t *testing.T) {
 		}
 	}
 }
+
+func TestAddTaskTimestamps(t *testing.T) {
+	b := &Board{Name: "test", FilePath: filepath.Join(t.TempDir(), "test.yaml")}
+	b.AddTask("My task", "high", "do stuff")
+
+	task := b.Tasks[0]
+	if task.CreatedAt == "" {
+		t.Error("CreatedAt should be set")
+	}
+	if task.UpdatedAt == "" {
+		t.Error("UpdatedAt should be set")
+	}
+	if task.CreatedAt != task.UpdatedAt {
+		t.Error("CreatedAt and UpdatedAt should match on creation")
+	}
+}
+
+func TestMoveTaskByRecordsHistory(t *testing.T) {
+	b := &Board{
+		Name:     "test",
+		FilePath: filepath.Join(t.TempDir(), "test.yaml"),
+	}
+	b.AddTask("History task", "medium", "")
+
+	if err := b.MoveTaskBy("history-task", "in-progress", "human"); err != nil {
+		t.Fatal(err)
+	}
+	task, _ := b.FindTask("history-task")
+	if len(task.History) != 1 {
+		t.Fatalf("history = %d, want 1", len(task.History))
+	}
+	if task.History[0].Action != "status" {
+		t.Errorf("action = %q, want %q", task.History[0].Action, "status")
+	}
+	if task.History[0].By != "human" {
+		t.Errorf("by = %q, want %q", task.History[0].By, "human")
+	}
+	if task.History[0].Detail != "backlog → in-progress" {
+		t.Errorf("detail = %q, want %q", task.History[0].Detail, "backlog → in-progress")
+	}
+	if task.Started == "" {
+		t.Error("started should be set")
+	}
+
+	if err := b.MoveTaskBy("history-task", "done", "mcp-agent"); err != nil {
+		t.Fatal(err)
+	}
+	if len(task.History) != 2 {
+		t.Fatalf("history = %d, want 2", len(task.History))
+	}
+	if task.History[1].By != "mcp-agent" {
+		t.Errorf("by = %q, want %q", task.History[1].By, "mcp-agent")
+	}
+	if task.Completed == "" {
+		t.Error("completed should be set")
+	}
+}
+
+func TestRecordHistoryCap(t *testing.T) {
+	task := &Task{ID: "cap-test", Status: "backlog"}
+	for i := 0; i < 15; i++ {
+		task.RecordHistory("status", "bot", "change")
+	}
+	if len(task.History) != 10 {
+		t.Errorf("history = %d, want 10 (capped)", len(task.History))
+	}
+}
+
+func TestRecordHistoryUpdatesTimestamp(t *testing.T) {
+	task := &Task{ID: "ts-test", Status: "backlog"}
+	task.RecordHistory("priority", "human", "low → high")
+	if task.UpdatedAt == "" {
+		t.Error("UpdatedAt should be set after RecordHistory")
+	}
+}
+
+func TestHistoryRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.yaml")
+
+	b := &Board{Name: "hist", Project: ".", FilePath: path}
+	b.AddTask("Roundtrip", "high", "")
+	_ = b.MoveTaskBy("roundtrip", "in-progress", "human")
+	_ = b.MoveTaskBy("roundtrip", "done", "mcp-agent")
+	if err := b.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	b2, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _ := b2.FindTask("roundtrip")
+	if task == nil {
+		t.Fatal("task not found after reload")
+	}
+	if len(task.History) != 2 {
+		t.Fatalf("history = %d, want 2", len(task.History))
+	}
+	if task.History[0].By != "human" {
+		t.Errorf("history[0].by = %q, want %q", task.History[0].By, "human")
+	}
+	if task.History[1].By != "mcp-agent" {
+		t.Errorf("history[1].by = %q, want %q", task.History[1].By, "mcp-agent")
+	}
+}

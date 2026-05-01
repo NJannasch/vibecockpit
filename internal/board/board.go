@@ -76,6 +76,48 @@ func (t *Task) RecordHistory(action, by, detail string) {
 
 var defaultColumns = []string{"backlog", "claimed", "in-progress", "review", "done"}
 
+func (b *Board) ArchiveTask(taskID, by string) error {
+	t, _ := b.FindTask(taskID)
+	if t == nil {
+		return fmt.Errorf("task %q not found", taskID)
+	}
+	t.RecordHistory("archived", by, t.Status+" → archived")
+	t.Status = "archived"
+	return nil
+}
+
+func (b *Board) DeleteTask(taskID string) error {
+	for i, t := range b.Tasks {
+		if t.ID == taskID {
+			b.Tasks = append(b.Tasks[:i], b.Tasks[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("task %q not found", taskID)
+}
+
+func MoveTaskToBoard(from, to *Board, taskID string) error {
+	t, idx := from.FindTask(taskID)
+	if t == nil {
+		return fmt.Errorf("task %q not found in board %q", taskID, from.Name)
+	}
+	task := *t
+	task.RecordHistory("moved", "", from.Name+" → "+to.Name)
+	to.Tasks = append(to.Tasks, task)
+	from.Tasks = append(from.Tasks[:idx], from.Tasks[idx+1:]...)
+	return nil
+}
+
+func (b *Board) ActiveTasks() []Task {
+	var out []Task
+	for _, t := range b.Tasks {
+		if t.Status != "archived" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func (b *Board) EffectiveColumns() []string {
 	if len(b.Columns) > 0 {
 		return b.Columns
@@ -239,6 +281,18 @@ func FindBoard(boards []*Board, name string) *Board {
 		}
 	}
 	return nil
+}
+
+func DeleteBoard(name, workspaceDir string) error {
+	boards, err := Discover(workspaceDir)
+	if err != nil {
+		return err
+	}
+	b := FindBoard(boards, name)
+	if b == nil {
+		return fmt.Errorf("board %q not found", name)
+	}
+	return os.Remove(b.FilePath)
 }
 
 func CreateBoard(name, project string) (*Board, error) {
