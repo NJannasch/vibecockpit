@@ -875,6 +875,8 @@ func (s *server) handleAddTask(w http.ResponseWriter, r *http.Request) {
 		Title       string `json:"title"`
 		Priority    string `json:"priority"`
 		Description string `json:"description"`
+		Tool        string `json:"tool"`
+		Model       string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Title == "" {
 		jsonError(w, "title required", 400)
@@ -886,7 +888,11 @@ func (s *server) handleAddTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "board not found", 404)
 		return
 	}
-	task := b.AddTask(req.Title, req.Priority, req.Description)
+	b.AddTask(req.Title, req.Priority, req.Description)
+	task := &b.Tasks[len(b.Tasks)-1]
+	task.Tool = req.Tool
+	task.Model = req.Model
+	task.CreatedBy = "human"
 	if err := b.Save(); err != nil {
 		jsonError(w, err.Error(), 500)
 		return
@@ -898,11 +904,7 @@ func (s *server) handleAddTask(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	boardName := r.PathValue("name")
 	taskID := r.PathValue("id")
-	var req struct {
-		Status   string `json:"status"`
-		Priority string `json:"priority"`
-		Summary  string `json:"summary"`
-	}
+	var req map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", 400)
 		return
@@ -918,17 +920,36 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "task not found", 404)
 		return
 	}
-	if req.Status != "" {
-		if err := b.MoveTask(taskID, req.Status); err != nil {
+	by := "human"
+	if v, ok := req["status"].(string); ok && v != "" {
+		if err := b.MoveTaskBy(taskID, v, by); err != nil {
 			jsonError(w, err.Error(), 400)
 			return
 		}
 	}
-	if req.Priority != "" {
-		t.Priority = req.Priority
+	if v, ok := req["title"].(string); ok && v != t.Title {
+		t.RecordHistory("title", by, t.Title+" → "+v)
+		t.Title = v
 	}
-	if req.Summary != "" {
-		t.Summary = req.Summary
+	if v, ok := req["priority"].(string); ok && v != t.Priority {
+		t.RecordHistory("priority", by, t.Priority+" → "+v)
+		t.Priority = v
+	}
+	if v, ok := req["description"].(string); ok {
+		t.Description = v
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if v, ok := req["tool"].(string); ok && v != t.Tool {
+		t.RecordHistory("tool", by, t.Tool+" → "+v)
+		t.Tool = v
+	}
+	if v, ok := req["model"].(string); ok && v != t.Model {
+		t.RecordHistory("model", by, t.Model+" → "+v)
+		t.Model = v
+	}
+	if v, ok := req["summary"].(string); ok {
+		t.Summary = v
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	if err := b.Save(); err != nil {
 		jsonError(w, err.Error(), 500)

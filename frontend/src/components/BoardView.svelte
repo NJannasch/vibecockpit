@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { fetchBoards, fetchBoard, createBoard, addBoardTask, updateBoardTask } from "../lib/api.js";
+  import { fetchBoards, fetchBoard, createBoard, addBoardTask, updateBoardTask, fetchConfig, fetchSessions } from "../lib/api.js";
   import { relativeTime, providerColors } from "../lib/utils.js";
 
   let boards = $state([]);
@@ -9,12 +9,24 @@
   let showCreateBoard = $state(false);
   let showAddTask = $state(false);
   let selectedTask = $state(null);
+  let availableProviders = $state([]);
+  let modelsByProvider = $state({});
+  let allModels = $state([]);
+  let knownProjects = $state([]);
+  let customProject = $state(false);
+
+  function modelsForTool(tool) {
+    if (!tool) return allModels;
+    return modelsByProvider[tool] || allModels;
+  }
 
   let newBoardName = $state("");
   let newBoardProject = $state("");
   let newTaskTitle = $state("");
   let newTaskPriority = $state("medium");
   let newTaskDescription = $state("");
+  let newTaskTool = $state("");
+  let newTaskModel = $state("");
 
   let dragTask = $state(null);
   let dragOverCol = $state(null);
@@ -50,7 +62,6 @@
   }
 
   async function load() {
-    loading = true;
     try {
       boards = await fetchBoards();
       if (boards.length > 0 && !activeBoard) {
@@ -61,6 +72,36 @@
       }
     } catch { /* ignore */ }
     loading = false;
+  }
+
+  async function loadConfig() {
+    try {
+      const cfg = await fetchConfig();
+      availableProviders = (cfg.allProviders || []).map(p => p.id);
+    } catch { /* ignore */ }
+    try {
+      const sessions = await fetchSessions();
+      const seen = new Map();
+      const provModels = {};
+      const allM = new Set();
+      for (const s of sessions) {
+        if (s.projectPath && !seen.has(s.projectPath)) {
+          seen.set(s.projectPath, s.projectName || s.projectPath.split("/").pop());
+        }
+        if (s.model && s.provider) {
+          if (!provModels[s.provider]) provModels[s.provider] = new Set();
+          provModels[s.provider].add(s.model);
+          allM.add(s.model);
+        }
+      }
+      knownProjects = [...seen.entries()]
+        .map(([path, name]) => ({ path, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      modelsByProvider = Object.fromEntries(
+        Object.entries(provModels).map(([k, v]) => [k, [...v].sort()])
+      );
+      allModels = [...allM].sort();
+    } catch { /* ignore */ }
   }
 
   async function selectBoard(name) {
@@ -74,6 +115,7 @@
     try {
       await createBoard(newBoardName.trim(), newBoardProject.trim() || ".");
       showCreateBoard = false;
+      customProject = false;
       newBoardName = "";
       newBoardProject = "";
       await load();
@@ -84,11 +126,13 @@
   async function doAddTask() {
     if (!newTaskTitle.trim() || !activeBoard) return;
     try {
-      await addBoardTask(activeBoard.name, newTaskTitle.trim(), newTaskPriority, newTaskDescription.trim());
+      await addBoardTask(activeBoard.name, newTaskTitle.trim(), newTaskPriority, newTaskDescription.trim(), newTaskTool, newTaskModel);
       showAddTask = false;
       newTaskTitle = "";
       newTaskPriority = "medium";
       newTaskDescription = "";
+      newTaskTool = "";
+      newTaskModel = "";
       await selectBoard(activeBoard.name);
     } catch { /* ignore */ }
   }
@@ -98,6 +142,18 @@
     try {
       await updateBoardTask(activeBoard.name, taskId, { status: newStatus });
       await selectBoard(activeBoard.name);
+    } catch { /* ignore */ }
+  }
+
+  async function updateField(taskId, field, value) {
+    if (!activeBoard) return;
+    try {
+      await updateBoardTask(activeBoard.name, taskId, { [field]: value });
+      await selectBoard(activeBoard.name);
+      if (selectedTask?.id === taskId) {
+        const updated = activeBoard.tasks.find(t => t.id === taskId);
+        if (updated) selectedTask = updated;
+      }
     } catch { /* ignore */ }
   }
 
@@ -128,7 +184,7 @@
     dragOverCol = null;
   }
 
-  onMount(load);
+  onMount(() => { load(); loadConfig(); });
 </script>
 
 <div class="board-page">
@@ -156,9 +212,7 @@
     </div>
   </div>
 
-  {#if loading}
-    <div class="board-empty">Loading boards...</div>
-  {:else if boards.length === 0}
+  {#if !loading && boards.length === 0}
     <div class="board-empty">
       <p style="font-size:1.1rem;font-weight:600;margin-bottom:.5rem">No boards yet</p>
       <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:1rem">
@@ -205,7 +259,10 @@
                     {/if}
                   </div>
                   <div class="kanban-card-title">{task.title}</div>
-                  {#if task.tool || task.claimedBy}
+                  {#if task.createdBy}
+                    <span class="kanban-origin" class:kanban-origin-agent={task.createdBy !== "human"}>{task.createdBy === "human" ? "manual" : task.createdBy}</span>
+                  {/if}
+                  {#if task.tool || task.claimedBy || task.model}
                     <div class="kanban-card-meta">
                       {#if task.claimedBy}
                         <span class="kanban-claimed">
@@ -214,7 +271,13 @@
                         </span>
                       {/if}
                       {#if task.tool}
-                        <span class="kanban-tool">{task.tool}</span>
+                        <span class="kanban-tool">
+                          <span class="kanban-dot" style="background:{providerColors[task.tool] || '#888'}"></span>
+                          {task.tool}
+                        </span>
+                      {/if}
+                      {#if task.model}
+                        <span class="kanban-model">{task.model}</span>
                       {/if}
                     </div>
                   {/if}
@@ -231,82 +294,130 @@
       {/each}
     </div>
 
-    {#if selectedTask}
-      <div class="task-detail">
-        <div class="task-detail-header">
-          <h3>{selectedTask.title}</h3>
-          <button class="btn btn-sm" onclick={() => { selectedTask = null; }}>Close</button>
-        </div>
-        <div class="task-detail-body">
-          <div class="task-detail-row">
-            <span class="task-detail-label">ID</span>
-            <code>{selectedTask.id}</code>
-          </div>
-          <div class="task-detail-row">
-            <span class="task-detail-label">Status</span>
-            <select value={selectedTask.status} onchange={(e) => moveTask(selectedTask.id, e.target.value)}>
-              {#each columns() as col}
-                <option value={col}>{columnLabels[col] || col}</option>
-              {/each}
-            </select>
-          </div>
-          {#if selectedTask.priority}
-            <div class="task-detail-row">
-              <span class="task-detail-label">Priority</span>
-              <span style="color:{priorityColors[selectedTask.priority]}">{selectedTask.priority}</span>
-            </div>
-          {/if}
-          {#if selectedTask.description}
-            <div class="task-detail-row" style="flex-direction:column;align-items:stretch">
-              <span class="task-detail-label">Description</span>
-              <p class="task-detail-desc">{selectedTask.description}</p>
-            </div>
-          {/if}
-          {#if selectedTask.acceptance?.length}
-            <div class="task-detail-row" style="flex-direction:column;align-items:stretch">
-              <span class="task-detail-label">Acceptance criteria</span>
-              <ul class="task-detail-accept">
-                {#each selectedTask.acceptance as a}
-                  <li>{a}</li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-          {#if selectedTask.tool}
-            <div class="task-detail-row">
-              <span class="task-detail-label">Tool</span>
-              <span>{selectedTask.tool}</span>
-            </div>
-          {/if}
-          {#if selectedTask.model}
-            <div class="task-detail-row">
-              <span class="task-detail-label">Model</span>
-              <span>{selectedTask.model}</span>
-            </div>
-          {/if}
-          {#if selectedTask.session}
-            <div class="task-detail-row">
-              <span class="task-detail-label">Session</span>
-              <code>{selectedTask.session}</code>
-            </div>
-          {/if}
-          {#if selectedTask.cost}
-            <div class="task-detail-row">
-              <span class="task-detail-label">Cost</span>
-              <span>{selectedTask.cost}</span>
-            </div>
-          {/if}
-          {#if selectedTask.summary}
-            <div class="task-detail-row" style="flex-direction:column;align-items:stretch">
-              <span class="task-detail-label">Summary</span>
-              <p class="task-detail-desc">{selectedTask.summary}</p>
-            </div>
-          {/if}
-        </div>
-      </div>
-    {/if}
   {/if}
 </div>
+
+<!-- Task Detail Modal -->
+{#if selectedTask}
+<div class="board-overlay" onclick={() => { selectedTask = null; }} role="dialog" aria-modal="true">
+  <div class="board-modal task-modal" onclick={(e) => e.stopPropagation()}>
+    <div class="task-modal-header">
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <code class="task-modal-id">{selectedTask.id}</code>
+        {#if selectedTask.createdBy}
+          <span class="kanban-origin" class:kanban-origin-agent={selectedTask.createdBy !== "human"}>{selectedTask.createdBy === "human" ? "manual" : selectedTask.createdBy}</span>
+        {/if}
+      </div>
+      <button class="btn btn-sm" onclick={() => { selectedTask = null; }}>&#10005;</button>
+    </div>
+    <div class="field">
+      <label for="edit-title">Title</label>
+      <input id="edit-title" type="text" value={selectedTask.title}
+        onchange={(e) => updateField(selectedTask.id, "title", e.target.value)} />
+    </div>
+    <div style="display:flex;gap:.6rem">
+      <div class="field" style="flex:1">
+        <label for="edit-status">Status</label>
+        <select id="edit-status" value={selectedTask.status} onchange={(e) => updateField(selectedTask.id, "status", e.target.value)}>
+          {#each columns() as col}
+            <option value={col}>{columnLabels[col] || col}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="field" style="flex:1">
+        <label for="edit-priority">Priority</label>
+        <select id="edit-priority" value={selectedTask.priority || ""} onchange={(e) => updateField(selectedTask.id, "priority", e.target.value)}>
+          <option value="">None</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:.6rem">
+      <div class="field" style="flex:1">
+        <label for="edit-tool">Tool</label>
+        <select id="edit-tool" value={selectedTask.tool || ""} onchange={(e) => updateField(selectedTask.id, "tool", e.target.value)}>
+          <option value="">Board default</option>
+          {#each availableProviders as p}
+            <option value={p}>{p}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="field" style="flex:1">
+        <label for="edit-model">Model</label>
+        <select id="edit-model" value={selectedTask.model || ""} onchange={(e) => updateField(selectedTask.id, "model", e.target.value)}>
+          <option value="">Board default</option>
+          {#each modelsForTool(selectedTask.tool || activeBoard?.defaults?.tool) as m}
+            <option value={m}>{m}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="edit-desc">Description</label>
+      <textarea id="edit-desc" rows="4" value={selectedTask.description || ""}
+        onchange={(e) => updateField(selectedTask.id, "description", e.target.value)}
+        placeholder="Task details..."></textarea>
+    </div>
+    {#if selectedTask.acceptance?.length}
+      <div class="field">
+        <label>Acceptance criteria</label>
+        <ul class="task-detail-accept">
+          {#each selectedTask.acceptance as a}
+            <li>{a}</li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+    <div class="task-modal-meta">
+      <div class="task-meta-timestamps">
+        {#if selectedTask.createdAt}
+          <span title={selectedTask.createdAt}>created {relativeTime(selectedTask.createdAt)}</span>
+        {/if}
+        {#if selectedTask.updatedAt && selectedTask.updatedAt !== selectedTask.createdAt}
+          <span title={selectedTask.updatedAt}>updated {relativeTime(selectedTask.updatedAt)}</span>
+        {/if}
+        {#if selectedTask.started}
+          <span title={selectedTask.started}>started {relativeTime(selectedTask.started)}</span>
+        {/if}
+        {#if selectedTask.completed}
+          <span title={selectedTask.completed}>completed {relativeTime(selectedTask.completed)}</span>
+        {/if}
+      </div>
+      {#if selectedTask.session}
+        <div class="task-meta-row"><span class="task-meta-label">Session</span> <code>{selectedTask.session}</code></div>
+      {/if}
+      {#if selectedTask.cost}
+        <div class="task-meta-row"><span class="task-meta-label">Cost</span> <span>{selectedTask.cost}</span></div>
+      {/if}
+      {#if selectedTask.summary}
+        <div class="task-meta-row" style="flex-direction:column;align-items:stretch">
+          <span class="task-meta-label">Agent summary</span>
+          <p class="task-detail-desc">{selectedTask.summary}</p>
+        </div>
+      {/if}
+    </div>
+    {#if selectedTask.history?.length}
+    <div class="task-history">
+      <span class="task-history-title">History</span>
+      <div class="task-history-list">
+        {#each selectedTask.history as h}
+          <div class="task-history-row">
+            <span class="task-history-time" title={h.timestamp}>{relativeTime(h.timestamp)}</span>
+            <span class="task-history-action">{h.action}</span>
+            <span class="task-history-detail">{h.detail}</span>
+            {#if h.by}
+              <span class="kanban-origin" class:kanban-origin-agent={h.by !== "human"}>{h.by === "human" ? "manual" : h.by}</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </div>
+    {/if}
+  </div>
+</div>
+{/if}
 
 <!-- Create Board Modal -->
 {#if showCreateBoard}
@@ -318,11 +429,30 @@
       <input id="board-name" type="text" bind:value={newBoardName} placeholder="my-project" />
     </div>
     <div class="field">
-      <label for="board-project">Project directory</label>
-      <input id="board-project" type="text" bind:value={newBoardProject} placeholder="~/Projects/my-project" />
+      <label for="board-project">Project</label>
+      {#if customProject || knownProjects.length === 0}
+        <input id="board-project" type="text" bind:value={newBoardProject} placeholder="~/Projects/my-project" />
+        {#if knownProjects.length > 0}
+          <button class="link-btn" style="margin-top:.3rem;font-size:.75rem" onclick={() => { customProject = false; }}>Pick from existing projects</button>
+        {/if}
+      {:else}
+        <select id="board-project" value={newBoardProject} onchange={(e) => {
+          if (e.target.value === "__custom__") { customProject = true; newBoardProject = ""; }
+          else {
+            newBoardProject = e.target.value;
+            if (!newBoardName.trim()) newBoardName = knownProjects.find(p => p.path === e.target.value)?.name || "";
+          }
+        }}>
+          <option value="">Select a project...</option>
+          {#each knownProjects as p}
+            <option value={p.path}>{p.name} — {p.path}</option>
+          {/each}
+          <option value="__custom__">Enter custom path...</option>
+        </select>
+      {/if}
     </div>
     <div class="board-modal-actions">
-      <button class="btn" onclick={() => { showCreateBoard = false; }}>Cancel</button>
+      <button class="btn" onclick={() => { showCreateBoard = false; customProject = false; }}>Cancel</button>
       <button class="btn btn-primary" onclick={doCreateBoard} disabled={!newBoardName.trim()}>Create</button>
     </div>
   </div>
@@ -345,6 +475,26 @@
         <option value="medium">Medium</option>
         <option value="low">Low</option>
       </select>
+    </div>
+    <div style="display:flex;gap:.6rem">
+      <div class="field" style="flex:1">
+        <label for="task-tool">Tool</label>
+        <select id="task-tool" bind:value={newTaskTool}>
+          <option value="">Board default</option>
+          {#each availableProviders as p}
+            <option value={p}>{p}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="field" style="flex:1">
+        <label for="task-model">Model</label>
+        <select id="task-model" bind:value={newTaskModel}>
+          <option value="">Board default</option>
+          {#each modelsForTool(newTaskTool || activeBoard?.defaults?.tool) as m}
+            <option value={m}>{m}</option>
+          {/each}
+        </select>
+      </div>
     </div>
     <div class="field">
       <label for="task-desc">Description (optional)</label>
@@ -391,20 +541,31 @@
   .kanban-card-meta { display: flex; gap: .4rem; align-items: center; margin-top: .3rem; font-size: .7rem; color: var(--text-secondary); }
   .kanban-claimed { display: flex; align-items: center; gap: .25rem; }
   .kanban-dot { width: 6px; height: 6px; border-radius: 50%; }
-  .kanban-tool { font-style: italic; }
+  .kanban-tool { display: flex; align-items: center; gap: .25rem; }
+  .kanban-model { font-size: .65rem; color: var(--text-muted); background: var(--bg); padding: .05rem .3rem; border-radius: 3px; border: 1px solid var(--border); }
+  .kanban-origin { font-size: .6rem; font-weight: 500; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: .05rem .3rem; text-transform: uppercase; letter-spacing: .3px; }
+  .kanban-origin-agent { color: var(--primary); border-color: var(--primary); background: var(--primary-glow, rgba(99,102,241,.08)); }
   .kanban-card-time { font-size: .68rem; color: var(--text-muted); margin-top: .2rem; }
 
-  /* Task detail */
-  .task-detail { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 1rem; }
-  .task-detail-header { display: flex; align-items: center; justify-content: space-between; padding: .8rem 1rem; border-bottom: 1px solid var(--border); }
-  .task-detail-header h3 { font-size: .95rem; margin: 0; }
-  .task-detail-body { padding: .8rem 1rem; }
-  .task-detail-row { display: flex; gap: .8rem; align-items: center; margin-bottom: .5rem; font-size: .85rem; }
-  .task-detail-label { font-size: .72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; min-width: 6rem; flex-shrink: 0; }
+  /* Task detail modal */
+  .task-modal { max-width: 520px; }
+  .task-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .8rem; }
+  .task-modal-id { font-size: .75rem; color: var(--text-muted); }
   .task-detail-desc { font-size: .82rem; color: var(--text-secondary); line-height: 1.5; margin: .3rem 0 0; white-space: pre-wrap; }
   .task-detail-accept { font-size: .82rem; color: var(--text-secondary); margin: .3rem 0 0; padding-left: 1.2rem; }
   .task-detail-accept li { margin-bottom: .2rem; }
-  .task-detail-row select { font-size: .82rem; padding: .2rem .4rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: inherit; }
+  .task-modal-meta { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .task-meta-row { display: flex; gap: .6rem; align-items: center; margin-bottom: .3rem; font-size: .8rem; }
+  .task-meta-label { font-size: .7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; min-width: 5.5rem; flex-shrink: 0; }
+  .task-meta-timestamps { display: flex; flex-wrap: wrap; gap: .3rem .8rem; font-size: .72rem; color: var(--text-muted); margin-bottom: .4rem; }
+  .task-history { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .task-history-title { font-size: .72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; }
+  .task-history-list { margin-top: .3rem; }
+  .task-history-row { display: flex; align-items: center; gap: .5rem; font-size: .75rem; padding: .2rem 0; border-bottom: 1px solid var(--border); }
+  .task-history-row:last-child { border-bottom: none; }
+  .task-history-time { color: var(--text-muted); font-size: .68rem; min-width: 5rem; flex-shrink: 0; }
+  .task-history-action { font-weight: 500; min-width: 3.5rem; flex-shrink: 0; }
+  .task-history-detail { color: var(--text-secondary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Modals */
   .board-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
@@ -417,6 +578,9 @@
   .board-modal .field textarea { width: 100%; font-size: .85rem; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: inherit; box-sizing: border-box; }
   .board-modal .field textarea { resize: vertical; }
   .board-modal-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+
+  .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-family: inherit; font-size: inherit; padding: 0; text-decoration: underline; }
+  .link-btn:hover { color: var(--primary-hover, var(--primary)); }
 
   @media (max-width: 700px) {
     .kanban { flex-direction: column; }

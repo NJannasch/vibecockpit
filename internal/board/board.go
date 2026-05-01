@@ -41,11 +41,37 @@ type Task struct {
 	Completed   string   `yaml:"completed,omitempty" json:"completed,omitempty"`
 	Cost        string   `yaml:"cost,omitempty" json:"cost,omitempty"`
 	Summary     string   `yaml:"summary,omitempty" json:"summary,omitempty"`
+	CreatedBy   string         `yaml:"created_by,omitempty" json:"createdBy,omitempty"`
+	CreatedAt   string         `yaml:"created_at,omitempty" json:"createdAt,omitempty"`
+	UpdatedAt   string         `yaml:"updated_at,omitempty" json:"updatedAt,omitempty"`
+	History     []HistoryEntry `yaml:"history,omitempty" json:"history,omitempty"`
 
 	// Future fields — parsed but not acted on yet
 	MCP          []string `yaml:"mcp,omitempty" json:"mcp,omitempty"`
 	Instructions []any    `yaml:"instructions,omitempty" json:"instructions,omitempty"`
 	Skills       []string `yaml:"skills,omitempty" json:"skills,omitempty"`
+}
+
+type HistoryEntry struct {
+	Timestamp string `yaml:"timestamp" json:"timestamp"`
+	Action    string `yaml:"action" json:"action"`
+	By        string `yaml:"by,omitempty" json:"by,omitempty"`
+	Detail    string `yaml:"detail,omitempty" json:"detail,omitempty"`
+}
+
+const maxHistory = 10
+
+func (t *Task) RecordHistory(action, by, detail string) {
+	t.History = append(t.History, HistoryEntry{
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Action:    action,
+		By:        by,
+		Detail:    detail,
+	})
+	if len(t.History) > maxHistory {
+		t.History = t.History[len(t.History)-maxHistory:]
+	}
+	t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 }
 
 var defaultColumns = []string{"backlog", "claimed", "in-progress", "review", "done"}
@@ -124,18 +150,25 @@ func (b *Board) AddTask(title, priority, description string) Task {
 			break
 		}
 	}
+	now := time.Now().UTC().Format(time.RFC3339)
 	t := Task{
 		ID:          id,
 		Title:       title,
 		Status:      "backlog",
 		Priority:    priority,
 		Description: description,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	b.Tasks = append(b.Tasks, t)
 	return t
 }
 
 func (b *Board) MoveTask(taskID, newStatus string) error {
+	return b.MoveTaskBy(taskID, newStatus, "")
+}
+
+func (b *Board) MoveTaskBy(taskID, newStatus, by string) error {
 	t, _ := b.FindTask(taskID)
 	if t == nil {
 		return fmt.Errorf("task %q not found", taskID)
@@ -150,6 +183,7 @@ func (b *Board) MoveTask(taskID, newStatus string) error {
 	if !valid {
 		return fmt.Errorf("invalid status %q (valid: %s)", newStatus, strings.Join(b.EffectiveColumns(), ", "))
 	}
+	oldStatus := t.Status
 	t.Status = newStatus
 	if newStatus == "done" && t.Completed == "" {
 		t.Completed = time.Now().UTC().Format(time.RFC3339)
@@ -157,6 +191,7 @@ func (b *Board) MoveTask(taskID, newStatus string) error {
 	if newStatus == "in-progress" && t.Started == "" {
 		t.Started = time.Now().UTC().Format(time.RFC3339)
 	}
+	t.RecordHistory("status", by, oldStatus+" → "+newStatus)
 	return nil
 }
 

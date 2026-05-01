@@ -146,11 +146,14 @@ export async function createBoard(name, project) {
   return res.json();
 }
 
-export async function addBoardTask(boardName, title, priority, description) {
+export async function addBoardTask(boardName, title, priority, description, tool, model) {
+  const body = { title, priority, description };
+  if (tool) body.tool = tool;
+  if (model) body.model = model;
   const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/tasks`, {
     method: "POST",
     headers: JSON_HEADERS,
-    body: JSON.stringify({ title, priority, description }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to add task: ${res.statusText}`);
   return res.json();
