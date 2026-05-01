@@ -891,7 +891,7 @@
           {@const isCollapsed = collapsedTreeNodes.has(nodeId)}
           {@const isUnlinked = name === "unlinked"}
           <div class="tree-node" class:collapsed={isCollapsed}>
-            <div class="tree-dir" onclick={() => toggleTreeNode(nodeId)}>
+            <button class="tree-dir" onclick={() => toggleTreeNode(nodeId)}>
               <span class="tree-chevron">&#9660;</span>
               <span class="tree-dir-icon">{isUnlinked ? "◇" : "▷"}</span>
               <span class="tree-dir-name">{isUnlinked ? "Unlinked sessions" : name}</span>
@@ -907,17 +907,17 @@
                   </span>
                 {/each}
               </span>
-            </div>
+            </button>
             <div class="tree-children">
               {@render treeNodes(child, nodeId)}
               {#each child.sessions.sort((a, b) => new Date(b.modified) - new Date(a.modified)) as s}
                 {@const summary = s.summary || s.firstPrompt || "untitled"}
                 {@const color = providerColors[s.provider] || "var(--text-secondary)"}
-                <div class="tree-session" onclick={() => launch(s.id, s.provider)}>
+                <button class="tree-session" onclick={() => launch(s.id, s.provider)}>
                   <span class="tree-session-provider" style="background:{color}" title={s.provider}></span>
                   <span class="tree-session-summary">{summary.slice(0, 70)}</span>
                   <span class="tree-session-time">{relativeTime(s.modified)}</span>
-                </div>
+                </button>
               {/each}
             </div>
           </div>
@@ -929,20 +929,20 @@
     <!-- Grouped List View -->
     {#each groupedSessions as { key, items }}
       <div class="group" class:collapsed={collapsedGroups.has(key)}>
-        <div class="group-header" onclick={() => toggleGroup(key)}>
+        <button class="group-header" onclick={() => toggleGroup(key)}>
           <span class="group-chevron">&#9660;</span>
           <span class="group-name">
             {#if groupByVal === "provider"}{providerLabels[key] || key}{:else}{key}{/if}
           </span>
           <span class="group-count">{items.length}</span>
-        </div>
+        </button>
         <div class="group-sessions sessions">
           {#each items as s}
             {@const summary = s.summary || s.firstPrompt || ""}
             {@const displaySummary = summary.length > 120 ? summary.slice(0, 117) + "..." : summary}
             {@const model = shortModel(s.model)}
             {@const hp = homePath(s.projectPath)}
-            <div class={s.isActive ? "card active" : "card"} onclick={(e) => launch(s.id, s.provider, e)}>
+            <div class={s.isActive ? "card active" : "card"} role="button" tabindex="0" onclick={(e) => launch(s.id, s.provider, e)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); launch(s.id, s.provider, e); } }}>
               <div class="card-status"></div>
               <div class="card-main">
                 <div class="card-project">
@@ -993,7 +993,7 @@
         {@const displaySummary = summary.length > 120 ? summary.slice(0, 117) + "..." : summary}
         {@const model = shortModel(s.model)}
         {@const hp = homePath(s.projectPath)}
-        <div class={s.isActive ? "card active" : "card"} onclick={(e) => launch(s.id, s.provider, e)}>
+        <div class={s.isActive ? "card active" : "card"} role="button" tabindex="0" onclick={(e) => launch(s.id, s.provider, e)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); launch(s.id, s.provider, e); } }}>
           <div class="card-status"></div>
           <div class="card-main">
             <div class="card-project">
@@ -1367,7 +1367,7 @@
         </div>
         {#each [...new Set(sessionList.map(s => s.provider))] as p}
           <div class="settings-path-row">
-            <label class="settings-path-label">{p}</label>
+            <label class="settings-path-label" for="provider-path-{p}">{p}</label>
             <input id="provider-path-{p}" type="text" value={configData.providerPaths?.[p] || ""}
               placeholder="/path/to/{p}"
               class:settings-path-highlight={highlightProvider === p}
@@ -1471,8 +1471,8 @@
 
 <!-- Privacy / Welcome Modal -->
 {#if showPrivacyNotice}
-<div class="overlay open" onclick={() => { localStorage.setItem("vibecockpit-privacy-ack", "1"); showPrivacyNotice = false; }}>
-  <div class="modal privacy-modal" onclick={(e) => e.stopPropagation()}>
+<div class="overlay open" role="dialog" aria-modal="true" tabindex="-1" onclick={() => { localStorage.setItem("vibecockpit-privacy-ack", "1"); showPrivacyNotice = false; }} onkeydown={(e) => { if (e.key === 'Escape') { localStorage.setItem("vibecockpit-privacy-ack", "1"); showPrivacyNotice = false; } }}>
+  <div class="modal privacy-modal" role="presentation" onclick={(e) => e.stopPropagation()}>
     <div class="privacy-modal-icon">&#9670;</div>
     <h2>Welcome to VibeCockpit</h2>
     <p class="privacy-modal-text">
@@ -1489,25 +1489,25 @@
 {/if}
 
 <!-- New Project Modal -->
-<div class="overlay" class:open={openModal === "newProject"} onclick={onOverlayClick}>
-  <div class="modal">
+<div class="overlay" class:open={openModal === "newProject"} role="dialog" aria-modal="true" tabindex="-1" onclick={onOverlayClick} onkeydown={(e) => { if (e.key === 'Escape') onOverlayClick(); }}>
+  <div class="modal" role="presentation">
     <h2><span style="color:var(--primary)">&#9670;</span> New Project</h2>
     <div class="field">
-      <label>Project directory</label>
-      <input type="text" bind:value={newProjectDir} placeholder="/home/user/projects/my-new-app" />
+      <label for="new-project-dir">Project directory</label>
+      <input id="new-project-dir" type="text" bind:value={newProjectDir} placeholder="/home/user/projects/my-new-app" />
     </div>
     <div style="display:flex;gap:.8rem">
       <div class="field" style="flex:1">
-        <label>Tool</label>
-        <select bind:value={newProjectTool}>
+        <label for="new-project-tool">Tool</label>
+        <select id="new-project-tool" bind:value={newProjectTool}>
           {#each availableTools as t}
             <option value={t}>{providerLabels[t] || t}</option>
           {/each}
         </select>
       </div>
       <div class="field" style="flex:1">
-        <label>Model (optional)</label>
-        <select bind:value={newProjectModel}>
+        <label for="new-project-model">Model (optional)</label>
+        <select id="new-project-model" bind:value={newProjectModel}>
           <option value="">Default</option>
           {#each configData.models || [] as m}
             <option value={m}>{m}</option>
@@ -1524,12 +1524,12 @@
 </div>
 
 <!-- Settings Modal -->
-<div class="overlay" class:open={openModal === "settings"} onclick={onOverlayClick}>
-  <div class="modal">
+<div class="overlay" class:open={openModal === "settings"} role="dialog" aria-modal="true" tabindex="-1" onclick={onOverlayClick} onkeydown={(e) => { if (e.key === 'Escape') onOverlayClick(); }}>
+  <div class="modal" role="presentation">
     <h2><span>&#9881;</span> Settings</h2>
     <div class="field">
-      <label>Terminal emulator</label>
-      <select bind:value={settingsTerminal}>
+      <label for="settings-terminal">Terminal emulator</label>
+      <select id="settings-terminal" bind:value={settingsTerminal}>
         {#each availableTerminals as t}
           <option value={t}>{t}{t === "default" ? " (auto-detect)" : t === "custom" ? " (custom command)" : ""}</option>
         {/each}
@@ -1537,17 +1537,17 @@
       <div class="field-hint">Which terminal to open when resuming a session from the web UI.</div>
     </div>
     <div class="field">
-      <label>Default new project directory</label>
-      <input type="text" bind:value={settingsNewDir} placeholder="/home/user/projects" />
+      <label for="settings-new-dir">Default new project directory</label>
+      <input id="settings-new-dir" type="text" bind:value={settingsNewDir} placeholder="/home/user/projects" />
     </div>
     <div class="field">
-      <label>Provider binary paths</label>
+      <span style="display:block;font-size:.82rem;color:var(--text-secondary);margin-bottom:.3rem">Provider binary paths</span>
       <div class="field-hint" style="margin-bottom:.4rem">Override if a tool isn't in your PATH (e.g. installed via nvm).</div>
       {#each settingsProviders as p}
         <div style="display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center">
-          <label style="width:5rem;font-size:.8rem;font-weight:500">{p}</label>
+          <label for="settings-provider-path-{p}" style="width:5rem;font-size:.8rem;font-weight:500">{p}</label>
           <input
-            id="provider-path-{p}"
+            id="settings-provider-path-{p}"
             type="text"
             value={settingsProviderPaths[p] || ""}
             oninput={(e) => (settingsProviderPaths = { ...settingsProviderPaths, [p]: e.target.value })}
@@ -1566,12 +1566,12 @@
 </div>
 
 <!-- Resume with Model Modal -->
-<div class="overlay" class:open={openModal === "resume"} onclick={onOverlayClick}>
-  <div class="modal">
+<div class="overlay" class:open={openModal === "resume"} role="dialog" aria-modal="true" tabindex="-1" onclick={onOverlayClick} onkeydown={(e) => { if (e.key === 'Escape') onOverlayClick(); }}>
+  <div class="modal" role="presentation">
     <h2><span style="color:var(--primary)">&#9670;</span> Resume Session</h2>
     <div class="field">
-      <label>Model</label>
-      <select bind:value={resumeModel}>
+      <label for="resume-model">Model</label>
+      <select id="resume-model" bind:value={resumeModel}>
         {#each resumeModelList as m}
           <option value={m}>{m}{pendingResume && m === pendingResume.current ? " (current)" : ""}</option>
         {/each}
@@ -1586,8 +1586,8 @@
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div class="overlay" class:open={openModal === "delete"} onclick={onOverlayClick}>
-  <div class="modal">
+<div class="overlay" class:open={openModal === "delete"} role="dialog" aria-modal="true" tabindex="-1" onclick={onOverlayClick} onkeydown={(e) => { if (e.key === 'Escape') onOverlayClick(); }}>
+  <div class="modal" role="presentation">
     <h2><span style="color:var(--danger)">&#9888;</span> Delete Session</h2>
     <div class="delete-warning">
       {#if pendingDelete}

@@ -552,8 +552,8 @@
 
 <!-- File Viewer Modal -->
 {#if fileViewer.open}
-<div class="fv-overlay" onclick={closeFile} role="dialog" aria-modal="true">
-  <div class="fv-modal" onclick={(e) => e.stopPropagation()}>
+<div class="fv-overlay" onclick={closeFile} role="dialog" aria-modal="true" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') { closeFile(); } }}>
+  <div class="fv-modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="fv-header">
       <div class="fv-title">
         <span class="fv-icon">&#9776;</span>
