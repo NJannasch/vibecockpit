@@ -74,8 +74,8 @@
 
   function totalCost() {
     return (activeBoard?.tasks || [])
-      .filter(t => t.cost)
-      .reduce((sum, t) => sum + parseFloat(t.cost.replace("$", "") || 0), 0);
+      .filter(t => t.cost > 0)
+      .reduce((sum, t) => sum + t.cost, 0);
   }
 
   async function load() {
@@ -262,7 +262,10 @@
     <div class="status-item"><span class="status-value">{sessions.length}</span><span class="status-label">sessions</span></div>
     <div class="status-item"><span class="status-value" class:status-active={activeSessions > 0}>{activeSessions}</span><span class="status-label">active</span></div>
     <div class="status-item"><span class="status-value">{providerCount}</span><span class="status-label">providers</span></div>
-    <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">total cost</span></div>
+    <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">session cost</span></div>
+    {#if totalCost() > 0}
+    <div class="status-item"><span class="status-value status-cost">${totalCost().toFixed(2)}</span><span class="status-label">board cost</span></div>
+    {/if}
   </div>
   {/if}
   {#if !loading && boards.length === 0}
@@ -275,6 +278,10 @@
       <p style="font-size:.78rem;color:var(--text-muted);margin-top:.8rem">
         Or via CLI: <code>vibecockpit board create my-project --project ~/Projects/my-project</code>
       </p>
+      <div class="board-info-tip">
+        <strong>MCP-powered</strong> — AI agents can create tasks, claim work, and report progress via MCP.
+        Sessions are auto-linked to tasks, so you see cost per feature. Enable MCP in Settings to get started.
+      </div>
     </div>
   {:else}
     <!-- Board list + kanban layout -->
@@ -288,6 +295,7 @@
           {@const isActive = activeBoard?.name === b.name}
           {@const activeTasks = (b.tasks || []).filter(t => t.status !== "archived")}
           {@const workingCount = (b.tasks || []).filter(t => t.status === "in-progress").length}
+          {@const boardCost = activeTasks.reduce((sum, t) => sum + (t.cost || 0), 0)}
           <div class="board-card-wrap">
             <button class="board-card" class:board-card-active={isActive} onclick={() => selectBoard(b.name)}>
               <div class="board-card-name">{b.name}</div>
@@ -296,6 +304,9 @@
                 <span>{activeTasks.length} tasks</span>
                 {#if workingCount > 0}
                   <span class="board-card-active-dot">&#9679; {workingCount} active</span>
+                {/if}
+                {#if boardCost > 0}
+                  <span class="board-card-cost">${boardCost.toFixed(2)}</span>
                 {/if}
               </div>
             </button>
@@ -356,8 +367,8 @@
                     {#if task.priority}
                       <span class="kanban-priority" style="color:{priorityColors[task.priority] || 'var(--text-muted)'}">{task.priority}</span>
                     {/if}
-                    {#if task.cost}
-                      <span class="kanban-cost">{task.cost}</span>
+                    {#if task.cost > 0}
+                      <span class="kanban-cost">${task.cost.toFixed(2)}</span>
                     {/if}
                   </div>
                   <div class="kanban-card-title">{task.title}</div>
@@ -394,6 +405,11 @@
           </div>
         </div>
       {/each}
+    </div>
+
+    <div class="board-info-tip">
+      <strong>MCP-connected</strong> — AI agents can pull tasks, report progress, and link sessions via MCP.
+      Costs are tracked per task based on linked session token usage. Enable MCP in Settings and add <code>.mcp.json</code> to your project.
     </div>
 
     {#if archivedTasks().length > 0}
@@ -514,8 +530,14 @@
       {#if selectedTask.session}
         <div class="task-meta-row"><span class="task-meta-label">Session</span> <code>{selectedTask.session}</code></div>
       {/if}
-      {#if selectedTask.cost}
-        <div class="task-meta-row"><span class="task-meta-label">Cost</span> <span>{selectedTask.cost}</span></div>
+      {#if selectedTask.sessions?.length}
+        <div class="task-meta-row">
+          <span class="task-meta-label">Sessions</span>
+          <span class="task-sessions">{#each selectedTask.sessions as sid}<code class="task-session-id">{sid}</code>{/each}</span>
+        </div>
+      {/if}
+      {#if selectedTask.cost > 0}
+        <div class="task-meta-row"><span class="task-meta-label">Cost</span> <span class="task-cost-value">${selectedTask.cost.toFixed(2)}</span></div>
       {/if}
       {#if selectedTask.summary}
         <div class="task-meta-row" style="flex-direction:column;align-items:stretch">
@@ -659,9 +681,14 @@
   .status-item { display: flex; align-items: baseline; gap: .3rem; }
   .status-value { font-size: .95rem; font-weight: 700; color: var(--text); }
   .status-value.status-active { color: var(--success); }
+  .status-value.status-cost { color: var(--warning, #f59e0b); }
   .status-label { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
 
   .board-empty { text-align: center; padding: 3rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .board-info-tip { font-size: .78rem; color: var(--text-muted); padding: .6rem .8rem; margin-top: .8rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); line-height: 1.5; }
+  .board-info-tip strong { color: var(--text-secondary); }
+  .board-info-tip code { font-size: .72rem; background: var(--bg); padding: .1rem .3rem; border-radius: 3px; }
 
   /* Layout: sidebar + main */
   .board-layout { display: flex; gap: 1rem; min-height: 500px; }
@@ -676,6 +703,7 @@
   .board-card-project { font-size: .7rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: .2rem; }
   .board-card-stats { font-size: .7rem; color: var(--text-secondary); display: flex; gap: .5rem; }
   .board-card-active-dot { color: var(--success); }
+  .board-card-cost { color: var(--warning, #f59e0b); font-weight: 600; }
   .board-card-delete { position: absolute; top: .3rem; right: .3rem; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: .7rem; padding: .1rem .3rem; border-radius: 3px; opacity: 0; transition: opacity .15s, color .15s; }
   .board-card-wrap:hover .board-card-delete { opacity: 1; }
   .board-card-delete:hover { color: var(--danger); background: var(--danger-dim, rgba(239,68,68,.1)); }
@@ -736,6 +764,9 @@
   .task-modal-meta { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
   .task-meta-row { display: flex; gap: .6rem; align-items: center; margin-bottom: .3rem; font-size: .8rem; }
   .task-meta-label { font-size: .7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; min-width: 5.5rem; flex-shrink: 0; }
+  .task-sessions { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .task-session-id { font-size: .72rem; background: var(--surface); border: 1px solid var(--border); padding: .1rem .35rem; border-radius: 3px; }
+  .task-cost-value { font-weight: 600; color: var(--warning, #f59e0b); }
   .task-meta-timestamps { display: flex; flex-wrap: wrap; gap: .3rem .8rem; font-size: .72rem; color: var(--text-muted); margin-bottom: .4rem; }
   .task-history { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
   .task-history-title { font-size: .72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; }

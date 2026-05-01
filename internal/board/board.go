@@ -36,10 +36,12 @@ type Task struct {
 	Tool        string   `yaml:"tool,omitempty" json:"tool,omitempty"`
 	Model       string   `yaml:"model,omitempty" json:"model,omitempty"`
 	ClaimedBy   string   `yaml:"claimed_by,omitempty" json:"claimedBy,omitempty"`
-	Session     string   `yaml:"session,omitempty" json:"session,omitempty"`
+	Sessions    []string `yaml:"sessions,omitempty" json:"sessions,omitempty"`
 	Started     string   `yaml:"started,omitempty" json:"started,omitempty"`
 	Completed   string   `yaml:"completed,omitempty" json:"completed,omitempty"`
-	Cost        string   `yaml:"cost,omitempty" json:"cost,omitempty"`
+	Cost        float64  `yaml:"cost,omitempty" json:"cost,omitempty"`
+	CostAtStart float64  `yaml:"cost_at_start,omitempty" json:"costAtStart,omitempty"`
+	CostAtEnd   float64  `yaml:"cost_at_end,omitempty" json:"costAtEnd,omitempty"`
 	Summary     string   `yaml:"summary,omitempty" json:"summary,omitempty"`
 	CreatedBy   string         `yaml:"created_by,omitempty" json:"createdBy,omitempty"`
 	CreatedAt   string         `yaml:"created_at,omitempty" json:"createdAt,omitempty"`
@@ -72,6 +74,16 @@ func (t *Task) RecordHistory(action, by, detail string) {
 		t.History = t.History[len(t.History)-maxHistory:]
 	}
 	t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+}
+
+func (t *Task) LinkSession(sessionID, by string) {
+	for _, s := range t.Sessions {
+		if s == sessionID {
+			return
+		}
+	}
+	t.Sessions = append(t.Sessions, sessionID)
+	t.RecordHistory("session-linked", by, sessionID)
 }
 
 var defaultColumns = []string{"backlog", "claimed", "in-progress", "review", "done"}

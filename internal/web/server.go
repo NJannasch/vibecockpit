@@ -853,12 +853,49 @@ func (s *server) discoverBoards() ([]*board.Board, error) {
 	return board.Discover(s.cfg.NewProjectDir)
 }
 
+func (s *server) enrichBoardCosts(boards []*board.Board) {
+	sessionCosts := make(map[string]float64)
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, sess := range sessions {
+			c := costs.EstimateCost(sess.Model, sess.Tokens)
+			if c > 0 {
+				sessionCosts[sess.ID] = c
+			}
+		}
+	}
+	for _, b := range boards {
+		for i := range b.Tasks {
+			t := &b.Tasks[i]
+			if len(t.Sessions) == 0 {
+				continue
+			}
+			var currentTotal float64
+			for _, sid := range t.Sessions {
+				currentTotal += sessionCosts[sid]
+			}
+			if t.CostAtStart > 0 {
+				t.Cost = currentTotal - t.CostAtStart
+				if t.Cost < 0 {
+					t.Cost = 0
+				}
+			} else if t.Cost == 0 {
+				t.Cost = currentTotal
+			}
+		}
+	}
+}
+
 func (s *server) handleGetBoards(w http.ResponseWriter, _ *http.Request) {
 	boards, err := s.discoverBoards()
 	if err != nil {
 		jsonError(w, err.Error(), 500)
 		return
 	}
+	s.enrichBoardCosts(boards)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(boards)
 }
@@ -866,6 +903,7 @@ func (s *server) handleGetBoards(w http.ResponseWriter, _ *http.Request) {
 func (s *server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	boards, _ := s.discoverBoards()
+	s.enrichBoardCosts(boards)
 	b := board.FindBoard(boards, name)
 	if b == nil {
 		jsonError(w, "board not found", 404)
@@ -982,6 +1020,9 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	if v, ok := req["summary"].(string); ok {
 		t.Summary = v
 		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if v, ok := req["session_id"].(string); ok && v != "" {
+		t.LinkSession(v, by)
 	}
 	if err := b.Save(); err != nil {
 		jsonError(w, err.Error(), 500)

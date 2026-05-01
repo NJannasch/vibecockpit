@@ -284,6 +284,10 @@ func (s *Server) toolDefinitions() []map[string]any {
 						"type":        "string",
 						"description": "Updated task description.",
 					},
+					"session_id": map[string]any{
+						"type":        "string",
+						"description": "Link a session ID to this task for cost tracking.",
+					},
 				},
 				"required": []string{"board", "task_id"},
 			},
@@ -539,6 +543,17 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			writeError(w, req.ID, -32602, "Task not found: "+args.TaskID)
 			return
 		}
+		if len(t.Sessions) > 0 {
+			currentCost := s.computeSessionCost(t.Sessions)
+			if t.CostAtStart > 0 {
+				t.Cost = currentCost - t.CostAtStart
+				if t.Cost < 0 {
+					t.Cost = 0
+				}
+			} else if t.Cost == 0 {
+				t.Cost = currentCost
+			}
+		}
 		result = t
 		count = 1
 
@@ -552,6 +567,7 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			Model       string `json:"model"`
 			Summary     string `json:"summary"`
 			Description string `json:"description"`
+			SessionID   string `json:"session_id"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
 			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
@@ -599,6 +615,23 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		if args.Description != "" {
 			t.Description = args.Description
 			t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		if args.SessionID != "" {
+			t.LinkSession(args.SessionID, by)
+		} else if args.Status == "in-progress" || args.Status == "claimed" {
+			for _, sid := range s.findActiveSessionsForProject(b.Project) {
+				t.LinkSession(sid, by)
+			}
+		}
+		if args.Status == "in-progress" && t.CostAtStart == 0 && len(t.Sessions) > 0 {
+			t.CostAtStart = s.computeSessionCost(t.Sessions)
+		}
+		if (args.Status == "done" || args.Status == "review") && len(t.Sessions) > 0 {
+			t.CostAtEnd = s.computeSessionCost(t.Sessions)
+			t.Cost = t.CostAtEnd - t.CostAtStart
+			if t.Cost < 0 {
+				t.Cost = 0
+			}
 		}
 		if err := b.Save(); err != nil {
 			writeError(w, req.ID, -32602, "Failed to save: "+err.Error())
@@ -807,6 +840,55 @@ func (s *Server) getSessionDetail(sessionID string) (any, int) {
 		}
 	}
 	return map[string]string{"error": "session not found"}, 0
+}
+
+func (s *Server) computeSessionCost(sessionIDs []string) float64 {
+	if len(sessionIDs) == 0 {
+		return 0
+	}
+	idSet := make(map[string]bool)
+	for _, id := range sessionIDs {
+		idSet[id] = true
+	}
+	var total float64
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, sess := range sessions {
+			if idSet[sess.ID] {
+				total += costs.EstimateCost(sess.Model, sess.Tokens)
+			}
+		}
+	}
+	return total
+}
+
+func (s *Server) findActiveSessionsForProject(projectPath string) []string {
+	if projectPath == "" {
+		return nil
+	}
+	expanded := projectPath
+	if strings.HasPrefix(expanded, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			expanded = home + expanded[1:]
+		}
+	}
+
+	var ids []string
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, sess := range sessions {
+			if sess.IsActive && (sess.ProjectPath == projectPath || sess.ProjectPath == expanded) {
+				ids = append(ids, sess.ID)
+			}
+		}
+	}
+	return ids
 }
 
 // JSON-RPC types
