@@ -21,6 +21,7 @@
   import CostsDashboard from "./components/CostsDashboard.svelte";
   import ToolInventory from "./components/ToolInventory.svelte";
   import AdoptionTimeline from "./components/AdoptionTimeline.svelte";
+  import BoardView from "./components/BoardView.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
 
@@ -683,6 +684,7 @@
   </div>
   <nav class="header-nav">
     <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
+    <button class="nav-btn" class:active={page === "boards"} onclick={() => navigateTo("boards")}>Boards</button>
     <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
     <button class="nav-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>Costs</button>
     <button class="nav-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>Inventory</button>
@@ -1006,6 +1008,10 @@
     VibeCockpit scans your local AI tool directories (e.g. <code>~/.claude</code>, <code>~/.codex</code>) to discover sessions, configs, and extensions. All analysis happens entirely on your machine — no data is sent anywhere.
   </div>
 </main>
+{:else if page === "boards"}
+  <main>
+    <BoardView />
+  </main>
 {:else if page === "costs"}
   <main>
     <CostsDashboard sessions={sessionList} />

@@ -123,3 +123,45 @@ export async function fetchInventoryFile(path) {
   if (!res.ok) throw new Error(`Failed to read file: ${res.statusText}`);
   return res.json();
 }
+
+export async function fetchBoards() {
+  const res = await fetch("/api/boards");
+  if (!res.ok) throw new Error(`Failed to fetch boards: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchBoard(name) {
+  const res = await fetch(`/api/boards/${encodeURIComponent(name)}`);
+  if (!res.ok) throw new Error(`Failed to fetch board: ${res.statusText}`);
+  return res.json();
+}
+
+export async function createBoard(name, project) {
+  const res = await fetch("/api/boards", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ name, project }),
+  });
+  if (!res.ok) throw new Error(`Failed to create board: ${res.statusText}`);
+  return res.json();
+}
+
+export async function addBoardTask(boardName, title, priority, description) {
+  const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/tasks`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ title, priority, description }),
+  });
+  if (!res.ok) throw new Error(`Failed to add task: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateBoardTask(boardName, taskId, updates) {
+  const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/tasks/${encodeURIComponent(taskId)}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update task: ${res.statusText}`);
+  return res.json();
+}
