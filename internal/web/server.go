@@ -846,8 +846,15 @@ func (s *server) handleMCPAudit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(entries)
 }
 
+func (s *server) discoverBoards() ([]*board.Board, error) {
+	if s.demoMode {
+		return board.DemoBoards(), nil
+	}
+	return board.Discover(s.cfg.NewProjectDir)
+}
+
 func (s *server) handleGetBoards(w http.ResponseWriter, _ *http.Request) {
-	boards, err := board.Discover(s.cfg.NewProjectDir)
+	boards, err := s.discoverBoards()
 	if err != nil {
 		jsonError(w, err.Error(), 500)
 		return
@@ -858,7 +865,7 @@ func (s *server) handleGetBoards(w http.ResponseWriter, _ *http.Request) {
 
 func (s *server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	boards, _ := s.discoverBoards()
 	b := board.FindBoard(boards, name)
 	if b == nil {
 		jsonError(w, "board not found", 404)
@@ -902,7 +909,7 @@ func (s *server) handleAddTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "title required", 400)
 		return
 	}
-	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	boards, _ := s.discoverBoards()
 	b := board.FindBoard(boards, name)
 	if b == nil {
 		jsonError(w, "board not found", 404)
@@ -929,7 +936,7 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", 400)
 		return
 	}
-	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	boards, _ := s.discoverBoards()
 	b := board.FindBoard(boards, boardName)
 	if b == nil {
 		jsonError(w, "board not found", 404)
@@ -994,7 +1001,7 @@ func (s *server) handleMoveTaskToBoard(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "toBoard required", 400)
 		return
 	}
-	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	boards, _ := s.discoverBoards()
 	from := board.FindBoard(boards, fromName)
 	if from == nil {
 		jsonError(w, "source board not found", 404)
@@ -1034,7 +1041,7 @@ func (s *server) handleDeleteBoard(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	boardName := r.PathValue("name")
 	taskID := r.PathValue("id")
-	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	boards, _ := s.discoverBoards()
 	b := board.FindBoard(boards, boardName)
 	if b == nil {
 		jsonError(w, "board not found", 404)

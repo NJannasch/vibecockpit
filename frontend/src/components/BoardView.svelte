@@ -3,6 +3,8 @@
   import { fetchBoards, fetchBoard, createBoard, addBoardTask, updateBoardTask, deleteBoardTask, deleteBoard, moveTaskToBoard, fetchConfig, fetchSessions } from "../lib/api.js";
   import { relativeTime, providerColors } from "../lib/utils.js";
 
+  let { sessions = [] } = $props();
+
   let boards = $state([]);
   let activeBoard = $state(null);
   let loading = $state(true);
@@ -247,10 +249,22 @@
     dragOverCol = null;
   }
 
+  let activeSessions = $derived(sessions.filter(s => s.isActive).length);
+  let totalCostAll = $derived(sessions.reduce((sum, s) => sum + (s.estCostUsd || 0), 0));
+  let providerCount = $derived([...new Set(sessions.map(s => s.provider))].length);
+
   onMount(() => { load(); loadConfig(); });
 </script>
 
 <div class="board-page">
+  {#if sessions.length > 0}
+  <div class="status-bar">
+    <div class="status-item"><span class="status-value">{sessions.length}</span><span class="status-label">sessions</span></div>
+    <div class="status-item"><span class="status-value" class:status-active={activeSessions > 0}>{activeSessions}</span><span class="status-label">active</span></div>
+    <div class="status-item"><span class="status-value">{providerCount}</span><span class="status-label">providers</span></div>
+    <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">total cost</span></div>
+  </div>
+  {/if}
   {#if !loading && boards.length === 0}
     <div class="board-empty">
       <p style="font-size:1.1rem;font-weight:600;margin-bottom:.5rem">No boards yet</p>
@@ -639,6 +653,14 @@
 
 <style>
   .board-page { max-width: 1400px; margin: 1.5rem auto; padding: 0 1rem; }
+
+  /* Status bar */
+  .status-bar { display: flex; gap: 1.5rem; margin-bottom: 1rem; padding: .5rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+  .status-item { display: flex; align-items: baseline; gap: .3rem; }
+  .status-value { font-size: .95rem; font-weight: 700; color: var(--text); }
+  .status-value.status-active { color: var(--success); }
+  .status-label { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+
   .board-empty { text-align: center; padding: 3rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 
   /* Layout: sidebar + main */
