@@ -262,7 +262,10 @@
     <div class="status-item"><span class="status-value">{sessions.length}</span><span class="status-label">sessions</span></div>
     <div class="status-item"><span class="status-value" class:status-active={activeSessions > 0}>{activeSessions}</span><span class="status-label">active</span></div>
     <div class="status-item"><span class="status-value">{providerCount}</span><span class="status-label">providers</span></div>
-    <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">total cost</span></div>
+    <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">session cost</span></div>
+    {#if totalCost() > 0}
+    <div class="status-item"><span class="status-value status-cost">${totalCost().toFixed(2)}</span><span class="status-label">board cost</span></div>
+    {/if}
   </div>
   {/if}
   {#if !loading && boards.length === 0}
@@ -665,6 +668,7 @@
   .status-item { display: flex; align-items: baseline; gap: .3rem; }
   .status-value { font-size: .95rem; font-weight: 700; color: var(--text); }
   .status-value.status-active { color: var(--success); }
+  .status-value.status-cost { color: var(--warning, #f59e0b); }
   .status-label { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
 
   .board-empty { text-align: center; padding: 3rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
