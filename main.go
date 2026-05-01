@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"vibecockpit/internal/board"
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/demo"
@@ -129,6 +130,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
 			os.Exit(1)
 		}
+		return
+	}
+
+	if args := flag.Args(); len(args) > 0 && args[0] == "board" {
+		runBoard(cfg, args[1:])
 		return
 	}
 
@@ -261,4 +267,140 @@ func findProvider(providers []provider.Provider, name string) provider.Provider 
 		}
 	}
 	return nil
+}
+
+func runBoard(cfg *config.Config, args []string) {
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+
+	switch args[0] {
+	case "list":
+		boards, err := board.Discover(cfg.NewProjectDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if len(boards) == 0 {
+			fmt.Println("No boards found.")
+			fmt.Printf("Create one: vibecockpit board create <name> --project <path>\n")
+			fmt.Printf("Or place a board.yaml in ~/.config/vibecockpit/boards/\n")
+			return
+		}
+		fmt.Fprintln(w, "BOARD\tPROJECT\tTASKS\tBACKLOG\tIN-PROGRESS\tDONE\tPATH")
+		for _, b := range boards {
+			counts := b.StatusCounts()
+			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\t%d\t%s\n",
+				b.Name, b.Project, len(b.Tasks),
+				counts["backlog"], counts["in-progress"], counts["done"],
+				b.FilePath)
+		}
+		_ = w.Flush()
+
+	case "show":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: vibecockpit board show <name>")
+			os.Exit(1)
+		}
+		boards, _ := board.Discover(cfg.NewProjectDir)
+		b := board.FindBoard(boards, args[1])
+		if b == nil {
+			fmt.Fprintf(os.Stderr, "Board %q not found\n", args[1])
+			os.Exit(1)
+		}
+		fmt.Printf("Board: %s\nProject: %s\nTool: %s  Model: %s\n\n",
+			b.Name, b.Project, b.Defaults.Tool, b.Defaults.Model)
+		fmt.Fprintln(w, "ID\tTITLE\tSTATUS\tPRIORITY\tTOOL\tCOST")
+		for _, t := range b.Tasks {
+			tool := t.Tool
+			if tool == "" {
+				tool = b.Defaults.Tool
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				t.ID, t.Title, t.Status, t.Priority, tool, t.Cost)
+		}
+		_ = w.Flush()
+
+	case "create":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: vibecockpit board create <name> [--project <path>]")
+			os.Exit(1)
+		}
+		name := args[1]
+		project := "."
+		for i := 2; i < len(args)-1; i++ {
+			if args[i] == "--project" {
+				project = args[i+1]
+			}
+		}
+		b, err := board.CreateBoard(name, project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Created board %q at %s\n", b.Name, b.FilePath)
+
+	case "add":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: vibecockpit board add <board-name> --title \"...\" [--priority high] [--description \"...\"]")
+			os.Exit(1)
+		}
+		boards, _ := board.Discover(cfg.NewProjectDir)
+		b := board.FindBoard(boards, args[1])
+		if b == nil {
+			fmt.Fprintf(os.Stderr, "Board %q not found\n", args[1])
+			os.Exit(1)
+		}
+		var title, priority, description string
+		for i := 2; i < len(args)-1; i++ {
+			switch args[i] {
+			case "--title":
+				title = args[i+1]
+			case "--priority":
+				priority = args[i+1]
+			case "--description":
+				description = args[i+1]
+			}
+		}
+		if title == "" {
+			fmt.Fprintln(os.Stderr, "Error: --title is required")
+			os.Exit(1)
+		}
+		task := b.AddTask(title, priority, description)
+		if err := b.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Added task %q (%s) to board %q\n", task.Title, task.ID, b.Name)
+
+	case "move":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: vibecockpit board move <task-id> <status>")
+			os.Exit(1)
+		}
+		taskID, newStatus := args[1], args[2]
+		boards, _ := board.Discover(cfg.NewProjectDir)
+		for _, b := range boards {
+			if t, _ := b.FindTask(taskID); t != nil {
+				if err := b.MoveTask(taskID, newStatus); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					os.Exit(1)
+				}
+				if err := b.Save(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error saving: %v\n", err)
+					os.Exit(1)
+				}
+				fmt.Printf("Moved %q to %q in board %q\n", taskID, newStatus, b.Name)
+				return
+			}
+		}
+		fmt.Fprintf(os.Stderr, "Task %q not found in any board\n", taskID)
+		os.Exit(1)
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown board command: %s\nCommands: list, show, create, add, move\n", args[0])
+		os.Exit(1)
+	}
 }

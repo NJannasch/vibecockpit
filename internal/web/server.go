@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"vibecockpit/internal/audit"
+	"vibecockpit/internal/board"
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
@@ -133,6 +134,11 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/inventory/file", s.handleInventoryFile)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/mcp-audit", s.handleMCPAudit)
+	mux.HandleFunc("GET /api/boards", s.handleGetBoards)
+	mux.HandleFunc("GET /api/boards/{name}", s.handleGetBoard)
+	mux.HandleFunc("POST /api/boards", s.handleCreateBoard)
+	mux.HandleFunc("POST /api/boards/{name}/tasks", s.handleAddTask)
+	mux.HandleFunc("PUT /api/boards/{name}/tasks/{id}", s.handleUpdateTask)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
@@ -818,6 +824,118 @@ func (s *server) handleMCPAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
+}
+
+func (s *server) handleGetBoards(w http.ResponseWriter, _ *http.Request) {
+	boards, err := board.Discover(s.cfg.NewProjectDir)
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(boards)
+}
+
+func (s *server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, name)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(b)
+}
+
+func (s *server) handleCreateBoard(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name    string `json:"name"`
+		Project string `json:"project"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		jsonError(w, "name required", 400)
+		return
+	}
+	if req.Project == "" {
+		req.Project = "."
+	}
+	b, err := board.CreateBoard(req.Name, req.Project)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(b)
+}
+
+func (s *server) handleAddTask(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var req struct {
+		Title       string `json:"title"`
+		Priority    string `json:"priority"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Title == "" {
+		jsonError(w, "title required", 400)
+		return
+	}
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, name)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	task := b.AddTask(req.Title, req.Priority, req.Description)
+	if err := b.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(task)
+}
+
+func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
+	boardName := r.PathValue("name")
+	taskID := r.PathValue("id")
+	var req struct {
+		Status   string `json:"status"`
+		Priority string `json:"priority"`
+		Summary  string `json:"summary"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", 400)
+		return
+	}
+	boards, _ := board.Discover(s.cfg.NewProjectDir)
+	b := board.FindBoard(boards, boardName)
+	if b == nil {
+		jsonError(w, "board not found", 404)
+		return
+	}
+	t, _ := b.FindTask(taskID)
+	if t == nil {
+		jsonError(w, "task not found", 404)
+		return
+	}
+	if req.Status != "" {
+		if err := b.MoveTask(taskID, req.Status); err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	if req.Priority != "" {
+		t.Priority = req.Priority
+	}
+	if req.Summary != "" {
+		t.Summary = req.Summary
+	}
+	if err := b.Save(); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(t)
 }
 
 // getLatestVersion returns the cached latest release tag, refreshing it
