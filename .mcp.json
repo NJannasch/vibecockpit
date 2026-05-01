@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vibecockpit": {
+      "command": "vibecockpit",
+      "args": ["--mcp"]
+    }
+  }
+}

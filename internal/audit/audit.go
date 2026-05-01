@@ -63,3 +63,52 @@ func (l *Logger) Log(tool string, params any, result []byte, count int) {
 func (l *Logger) Path() string {
 	return l.path
 }
+
+func (l *Logger) ReadLog(limit int) ([]Entry, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	data, err := os.ReadFile(l.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var entries []Entry
+	for _, line := range splitLines(data) {
+		if len(line) == 0 {
+			continue
+		}
+		var e Entry
+		if err := json.Unmarshal(line, &e); err != nil {
+			continue
+		}
+		entries = append(entries, e)
+	}
+
+	// Return most recent first
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+		entries[i], entries[j] = entries[j], entries[i]
+	}
+	if limit > 0 && len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries, nil
+}
+
+func splitLines(data []byte) [][]byte {
+	var lines [][]byte
+	start := 0
+	for i, b := range data {
+		if b == '\n' {
+			lines = append(lines, data[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(data) {
+		lines = append(lines, data[start:])
+	}
+	return lines
+}

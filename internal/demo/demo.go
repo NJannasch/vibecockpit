@@ -24,24 +24,32 @@ func New() *DemoProvider {
 				ProjectPath: "~/Projects/web-dashboard", Summary: "Building analytics dashboard with real-time charts",
 				Model: "claude-opus-4-6", GitBranch: "main", MessageCount: 847,
 				Created: now.Add(-2 * h), Modified: now.Add(-12 * time.Minute), IsActive: true, ActivePID: 10001,
+				Tokens: provider.TokenUsage{InputTokens: 1_250_000, OutputTokens: 380_000, CacheReadTokens: 820_000, CacheWriteTokens: 95_000, TotalTokens: 2_545_000},
+				EstCostUSD: 49.28,
 			},
 			{
 				ID: "demo-c2", Provider: "claude", ProjectName: "payment-service",
 				ProjectPath: "~/Projects/payment-service", Summary: "Fix Stripe webhook retry logic — idempotency keys missing",
 				Model: "claude-sonnet-4-6", GitBranch: "fix/webhooks", MessageCount: 312,
 				Created: now.Add(-4 * h), Modified: now.Add(-2 * h), IsActive: true, ActivePID: 10002,
+				Tokens: provider.TokenUsage{InputTokens: 480_000, OutputTokens: 145_000, CacheReadTokens: 310_000, CacheWriteTokens: 42_000, TotalTokens: 977_000},
+				EstCostUSD: 3.77,
 			},
 			{
 				ID: "demo-c3", Provider: "claude", ProjectName: "recommendation-engine",
 				ProjectPath: "~/Projects/recommendation-engine", Summary: "Implement embedding pipeline for content-based filtering",
 				Model: "claude-opus-4-6[1m]", GitBranch: "feat/embeddings", MessageCount: 1523,
 				Created: now.Add(-3 * d), Modified: now.Add(-5 * h),
+				Tokens: provider.TokenUsage{InputTokens: 3_800_000, OutputTokens: 920_000, CacheReadTokens: 2_100_000, CacheWriteTokens: 280_000, TotalTokens: 7_100_000},
+				EstCostUSD: 131.40,
 			},
 			{
 				ID: "demo-c4", Provider: "claude", ProjectName: "auth-service",
 				ProjectPath: "~/Projects/auth-service", Summary: "Add OAuth2 PKCE flow for mobile clients",
 				Model: "claude-opus-4-6", GitBranch: "feat/pkce", MessageCount: 204,
 				Created: now.Add(-120 * d), Modified: now.Add(-1 * d),
+				Tokens: provider.TokenUsage{InputTokens: 310_000, OutputTokens: 85_000, CacheReadTokens: 190_000, CacheWriteTokens: 28_000, TotalTokens: 613_000},
+				EstCostUSD: 11.53,
 			},
 
 			// Codex CLI
@@ -50,21 +58,27 @@ func New() *DemoProvider {
 				ProjectPath: "~/Projects/cloud-infra", Summary: "Migrate EKS cluster to new VPC with zero downtime",
 				Model: "openai/gpt-5.4", GitBranch: "main", MessageCount: 456,
 				Created: now.Add(-1 * h), Modified: now.Add(-45 * time.Minute), IsActive: true, ActivePID: 10003,
+				Tokens: provider.TokenUsage{TotalTokens: 1_420_000},
+				EstCostUSD: 6.74,
 			},
 			{
 				ID: "demo-x2", Provider: "codex", ProjectName: "event-platform",
 				ProjectPath: "~/Projects/event-platform", Summary: "Set up Kafka consumers for real-time event processing",
 				Model: "openai/gpt-5.4", GitBranch: "feat/kafka", MessageCount: 289,
 				Created: now.Add(-75 * d), Modified: now.Add(-8 * h),
+				Tokens: provider.TokenUsage{TotalTokens: 890_000},
+				EstCostUSD: 4.23,
 			},
 			{
 				ID: "demo-x3", Provider: "codex", ProjectName: "mobile-app",
 				ProjectPath: "~/Projects/mobile-app", Summary: "React Native bottom tabs + deep linking refactor",
 				Model: "openai/gpt-5.2", GitBranch: "refactor/nav", MessageCount: 178,
 				Created: now.Add(-90 * d), Modified: now.Add(-2 * d),
+				Tokens: provider.TokenUsage{TotalTokens: 520_000},
+				EstCostUSD: 2.47,
 			},
 
-			// Copilot CLI
+			// Copilot CLI — flat subscription, no token data
 			{
 				ID: "demo-p1", Provider: "copilot", ProjectName: "file-encryptor",
 				ProjectPath: "~/Projects/file-encryptor", Summary: "Build CLI tool with AES-256-GCM encryption",
@@ -84,12 +98,16 @@ func New() *DemoProvider {
 				ProjectPath: "~/Projects/doc-generator", Summary: "Generate architecture diagrams from codebase analysis",
 				Model: "gemini-3-pro", MessageCount: 203,
 				Created: now.Add(-40 * d), Modified: now.Add(-4 * h),
+				Tokens: provider.TokenUsage{InputTokens: 620_000, OutputTokens: 185_000, CacheReadTokens: 140_000, TotalTokens: 945_000},
+				EstCostUSD: 1.72,
 			},
 			{
 				ID: "demo-g2", Provider: "gemini", ProjectName: "email-classifier",
 				ProjectPath: "~/Projects/email-classifier", Summary: "Auto-label inbox with custom rules and ML categorization",
 				Model: "gemini-3-flash", MessageCount: 156,
 				Created: now.Add(-50 * d), Modified: now.Add(-1 * d),
+				Tokens: provider.TokenUsage{InputTokens: 410_000, OutputTokens: 120_000, CacheReadTokens: 95_000, TotalTokens: 625_000},
+				EstCostUSD: 0.07,
 			},
 
 			// OpenCode
@@ -98,12 +116,16 @@ func New() *DemoProvider {
 				ProjectPath: "~/Projects/home-automation", Summary: "Presence detection + lighting scenes with local LLM",
 				Model: "llamacpp/qwen-3.6", MessageCount: 342,
 				Created: now.Add(-25 * d), Modified: now.Add(-6 * h),
+				Tokens: provider.TokenUsage{InputTokens: 780_000, OutputTokens: 290_000, TotalTokens: 1_070_000},
+				EstCostUSD: 6.69,
 			},
 			{
 				ID: "demo-o2", Provider: "opencode", ProjectName: "static-site",
 				ProjectPath: "~/Projects/static-site", Summary: "Astro blog with MDX, syntax highlighting, and RSS",
 				Model: "anthropic/claude-opus-4-5", MessageCount: 521,
 				Created: now.Add(-30 * d), Modified: now.Add(-3 * d),
+				Tokens: provider.TokenUsage{InputTokens: 1_100_000, OutputTokens: 340_000, CacheReadTokens: 650_000, CacheWriteTokens: 78_000, TotalTokens: 2_168_000},
+				EstCostUSD: 43.42,
 			},
 
 			// Remote sessions
@@ -112,18 +134,24 @@ func New() *DemoProvider {
 				ProjectPath: "/home/deploy/training", Summary: "Fine-tune LoRA adapter on support ticket dataset",
 				Model: "claude-opus-4-6", GitBranch: "experiment/lora-v3", MessageCount: 89,
 				Created: now.Add(-5 * d), Modified: now.Add(-12 * h),
+				Tokens: provider.TokenUsage{InputTokens: 195_000, OutputTokens: 52_000, CacheReadTokens: 88_000, TotalTokens: 335_000},
+				EstCostUSD: 6.96,
 			},
 			{
 				ID: "demo-r2", Provider: "remote-gpu-box", ProjectName: "serving-api",
 				ProjectPath: "/home/deploy/serving", Summary: "Deploy vLLM with batched inference and health checks",
 				Model: "codex/gpt-5.4", MessageCount: 234,
 				Created: now.Add(-10 * d), Modified: now.Add(-1 * d),
+				Tokens: provider.TokenUsage{TotalTokens: 710_000},
+				EstCostUSD: 3.37,
 			},
 			{
 				ID: "demo-r3", Provider: "remote-agent", ProjectName: "agent-tasks",
 				ProjectPath: "~/.agent", Summary: "Automated monitoring — cron health checks via telegram",
 				Model: "qwen-3.6-moe", MessageCount: 67,
 				Created: now.Add(-15 * d), Modified: now.Add(-20 * time.Minute), IsActive: true, ActivePID: 10004,
+				Tokens: provider.TokenUsage{InputTokens: 85_000, OutputTokens: 32_000, TotalTokens: 117_000},
+				EstCostUSD: 0.74,
 			},
 		},
 	}

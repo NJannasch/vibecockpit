@@ -52,6 +52,23 @@
   let groupByVal = $state("none");
   let activeFiltersVal = $state({});
   let versionInfo = $state(null);
+  let showPrivacyNotice = $state(!localStorage.getItem("vibecockpit-privacy-ack"));
+  let mcpAuditLog = $state([]);
+  let mcpAuditExpanded = $state(new Set());
+
+  async function loadMCPAudit() {
+    try {
+      const r = await fetch("/api/mcp-audit?limit=200");
+      if (r.ok) mcpAuditLog = await r.json();
+    } catch { /* optional */ }
+  }
+
+  function toggleAuditRow(i) {
+    const next = new Set(mcpAuditExpanded);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    mcpAuditExpanded = next;
+  }
 
   async function loadVersionInfo() {
     try {
@@ -175,11 +192,13 @@
   function navigateTo(p) {
     page = p;
     if (p === "security" && !scanPollTimer) {
-      // Check if a scan is already running on the server
       getScanStatus().then(s => {
         scanStatus = s;
         if (s.state === "scanning") pollScan();
       }).catch(() => {});
+    }
+    if (p === "settings" || p === "mcp") {
+      loadMCPAudit();
     }
   }
 
@@ -628,6 +647,13 @@
     return path ? path.replace(/^\/home\/[^/]+/, "~") : "";
   }
 
+  function formatAuditParams(params) {
+    if (!params || typeof params !== "object") return "—";
+    const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "");
+    if (entries.length === 0) return "—";
+    return entries.map(([k, v]) => `${k}=${v}`).join(", ");
+  }
+
   // ─── Resume model list ───
 
   let resumeModelList = $derived.by(() => {
@@ -663,6 +689,9 @@
     <button class="nav-btn" class:active={page === "stats"} onclick={() => navigateTo("stats")}>Stats</button>
     {#if configData.enableScanner}
       <button class="nav-btn" class:active={page === "security"} onclick={() => navigateTo("security")}>Security</button>
+    {/if}
+    {#if configData.enableMcp}
+      <button class="nav-btn" class:active={page === "mcp"} onclick={() => navigateTo("mcp")}>MCP</button>
     {/if}
     <button class="nav-btn" class:active={page === "settings"} onclick={() => navigateTo("settings")}>Settings</button>
   </nav>
@@ -972,6 +1001,10 @@
       {/each}
     </div>
   {/if}
+  <div class="privacy-notice">
+    <span class="privacy-icon">&#128274;</span>
+    VibeCockpit scans your local AI tool directories (e.g. <code>~/.claude</code>, <code>~/.codex</code>) to discover sessions, configs, and extensions. All analysis happens entirely on your machine — no data is sent anywhere.
+  </div>
 </main>
 {:else if page === "costs"}
   <main>
@@ -989,11 +1022,121 @@
   <main>
     {@render securityPage()}
   </main>
+{:else if page === "mcp"}
+  <main>
+    {@render mcpPage()}
+  </main>
 {:else if page === "settings"}
   <main>
     {@render settingsPage()}
   </main>
 {/if}
+
+{#snippet mcpPage()}
+  {@const toolColors = {
+    list_sessions: "#6366f1",
+    search_sessions: "#8b5cf6",
+    get_session_detail: "#a78bfa",
+    scan_secrets: "#ef4444",
+    get_costs: "#f59e0b",
+    get_stats: "#10b981",
+    get_inventory: "#3b82f6",
+    rescan: "#06b6d4"
+  }}
+  {@const toolCounts = mcpAuditLog.reduce((acc, e) => { acc[e.tool] = (acc[e.tool] || 0) + 1; return acc; }, {})}
+  <div class="mcp-page">
+    <div class="mcp-page-header">
+      <div>
+        <h2>MCP Server</h2>
+        <p style="font-size:.82rem;color:var(--text-secondary)">Tool call history from AI assistants connected via Model Context Protocol.</p>
+      </div>
+      <button class="btn btn-sm" onclick={loadMCPAudit}>Refresh</button>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="mcp-stats">
+      <div class="mcp-stat">
+        <span class="mcp-stat-value">{mcpAuditLog.length}</span>
+        <span class="mcp-stat-label">total calls</span>
+      </div>
+      <div class="mcp-stat">
+        <span class="mcp-stat-value">{Object.keys(toolCounts).length}</span>
+        <span class="mcp-stat-label">tools used</span>
+      </div>
+      <div class="mcp-stat">
+        <span class="mcp-stat-value">{mcpAuditLog.length > 0 ? relativeTime(mcpAuditLog[0].timestamp) : "—"}</span>
+        <span class="mcp-stat-label">last call</span>
+      </div>
+    </div>
+
+    <!-- Tool breakdown -->
+    {#if Object.keys(toolCounts).length > 0}
+    <div class="mcp-tool-bar">
+      {#each Object.entries(toolCounts).sort((a, b) => b[1] - a[1]) as [tool, count]}
+        <div class="mcp-tool-chip" style="--chip-color:{toolColors[tool] || '#888'}">
+          <span class="mcp-tool-chip-dot"></span>
+          <span>{tool}</span>
+          <span class="mcp-tool-chip-count">{count}</span>
+        </div>
+      {/each}
+    </div>
+    {/if}
+
+    <!-- Audit log table -->
+    {#if mcpAuditLog.length === 0}
+      <div class="mcp-empty">
+        <p>No MCP tool calls recorded yet.</p>
+        <p style="font-size:.82rem;color:var(--text-secondary)">Tool calls will appear here once an AI assistant uses VibeCockpit via MCP.</p>
+      </div>
+    {:else}
+      <div class="mcp-audit-table mcp-audit-full">
+        <div class="mcp-audit-row mcp-audit-header">
+          <span class="mcp-col-time">Time</span>
+          <span class="mcp-col-tool">Tool</span>
+          <span class="mcp-col-params">Parameters</span>
+          <span class="mcp-col-results">Results</span>
+          <span class="mcp-col-hash">Hash</span>
+        </div>
+        {#each mcpAuditLog as entry, i}
+          <button class="mcp-audit-row mcp-audit-data" class:mcp-row-expanded={mcpAuditExpanded.has(i)} onclick={() => toggleAuditRow(i)}>
+            <span class="mcp-col-time" title={entry.timestamp}>{relativeTime(entry.timestamp)}</span>
+            <span class="mcp-col-tool">
+              <span class="mcp-tool-dot" style="background:{toolColors[entry.tool] || '#888'}"></span>
+              <code>{entry.tool}</code>
+            </span>
+            <span class="mcp-col-params">{formatAuditParams(entry.params)}</span>
+            <span class="mcp-col-results">{entry.resultCount}</span>
+            <span class="mcp-col-hash"><code>{entry.resultHash}</code></span>
+          </button>
+          {#if mcpAuditExpanded.has(i)}
+            <div class="mcp-audit-detail">
+              <div class="mcp-detail-section">
+                <span class="mcp-detail-label">Timestamp</span>
+                <span>{entry.timestamp}</span>
+              </div>
+              <div class="mcp-detail-section">
+                <span class="mcp-detail-label">Tool</span>
+                <code>{entry.tool}</code>
+              </div>
+              <div class="mcp-detail-section">
+                <span class="mcp-detail-label">Parameters</span>
+                <pre class="mcp-detail-json">{JSON.stringify(entry.params, null, 2)}</pre>
+              </div>
+              <div class="mcp-detail-section">
+                <span class="mcp-detail-label">Result count</span>
+                <span>{entry.resultCount}</span>
+              </div>
+              <div class="mcp-detail-section">
+                <span class="mcp-detail-label">Result hash</span>
+                <code>{entry.resultHash}</code>
+              </div>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+  </div>
+{/snippet}
 
 {#snippet securityPage()}
   <div style="max-width:900px;margin:2rem auto;padding:0 1rem">
@@ -1224,6 +1367,43 @@
       <button class="btn btn-sm" onclick={addRemoteSource} style="margin-top:.3rem">+ Add remote source</button>
     </div>
 
+    <!-- MCP Server -->
+    <div class="settings-card">
+      <h3 class="settings-section">MCP Server</h3>
+      <div class="settings-row">
+        <div class="settings-label">
+          <span>Enable MCP server</span>
+          <span class="field-hint">Expose VibeCockpit as an MCP tool server (JSON-RPC over stdio)</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" checked={configData.enableMcp || false}
+            onchange={(e) => save(c => ({...c, enableMcp: e.target.checked}))} />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      {#if configData.enableMcp}
+      <div class="mcp-info">
+        <p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 .6rem">
+          When enabled, run <code>vibecockpit --mcp</code> to start the server. Add it to your AI tool's MCP config:
+        </p>
+        <pre class="mcp-snippet">{`{
+  "mcpServers": {
+    "vibecockpit": {
+      "command": "vibecockpit",
+      "args": ["--mcp"]
+    }
+  }
+}`}</pre>
+        <p style="font-size:.78rem;color:var(--text-muted);margin:.6rem 0 0">
+          Tools: <code>list_sessions</code>, <code>search_sessions</code>, <code>get_session_detail</code>, <code>scan_secrets</code>, <code>get_costs</code>, <code>get_stats</code>, <code>get_inventory</code>, <code>rescan</code>
+        </p>
+        <p style="font-size:.78rem;color:var(--text-muted);margin:.4rem 0 0">
+          View tool call history in the <button class="link-btn" onclick={() => navigateTo("mcp")}>MCP tab</button>.
+        </p>
+      </div>
+      {/if}
+    </div>
+
     <!-- Scanner (feature-flagged) -->
     {#if configData.enableScanner}
     <div class="settings-card">
@@ -1248,6 +1428,25 @@
     {/if}
   </div>
 {/snippet}
+
+<!-- Privacy / Welcome Modal -->
+{#if showPrivacyNotice}
+<div class="overlay open" onclick={() => { localStorage.setItem("vibecockpit-privacy-ack", "1"); showPrivacyNotice = false; }}>
+  <div class="modal privacy-modal" onclick={(e) => e.stopPropagation()}>
+    <div class="privacy-modal-icon">&#9670;</div>
+    <h2>Welcome to VibeCockpit</h2>
+    <p class="privacy-modal-text">
+      VibeCockpit scans your local AI tool directories (e.g. <code>~/.claude</code>, <code>~/.codex</code>, <code>~/.cursor</code>) to discover sessions, configuration files, IDE extensions, and usage statistics.
+    </p>
+    <p class="privacy-modal-text">
+      <strong>All analysis happens entirely on your machine.</strong> No data is collected, transmitted, or shared with any external service.
+    </p>
+    <button class="btn btn-primary" onclick={() => { localStorage.setItem("vibecockpit-privacy-ack", "1"); showPrivacyNotice = false; }}>
+      Got it
+    </button>
+  </div>
+</div>
+{/if}
 
 <!-- New Project Modal -->
 <div class="overlay" class:open={openModal === "newProject"} onclick={onOverlayClick}>
