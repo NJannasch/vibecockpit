@@ -15,31 +15,50 @@ type ModelPrice struct {
 	CacheWrite float64
 }
 
-// Pricing as of April 2026. Models not listed get a rough estimate.
+// Pricing as of May 2026 (USD per million tokens).
 var pricing = map[string]ModelPrice{
-	// Anthropic
-	"claude-opus-4-7":      {Input: 15.0, Output: 75.0, CacheRead: 1.5, CacheWrite: 18.75},
-	"claude-opus-4-6":      {Input: 15.0, Output: 75.0, CacheRead: 1.5, CacheWrite: 18.75},
-	"claude-opus-4-6[1m]":  {Input: 15.0, Output: 75.0, CacheRead: 1.5, CacheWrite: 18.75},
-	"claude-opus-4-5":      {Input: 15.0, Output: 75.0, CacheRead: 1.5, CacheWrite: 18.75},
+	// Anthropic — current generation (4.x)
+	"claude-opus-4-7":      {Input: 5.0, Output: 25.0, CacheRead: 0.5, CacheWrite: 6.25},
+	"claude-opus-4-6":      {Input: 5.0, Output: 25.0, CacheRead: 0.5, CacheWrite: 6.25},
+	"claude-opus-4-6[1m]":  {Input: 5.0, Output: 25.0, CacheRead: 0.5, CacheWrite: 6.25},
 	"claude-sonnet-4-6":    {Input: 3.0, Output: 15.0, CacheRead: 0.3, CacheWrite: 3.75},
 	"claude-sonnet-4-5":    {Input: 3.0, Output: 15.0, CacheRead: 0.3, CacheWrite: 3.75},
-	"claude-haiku-4-5":     {Input: 0.8, Output: 4.0, CacheRead: 0.08, CacheWrite: 1.0},
+	"claude-haiku-4-5":     {Input: 1.0, Output: 5.0, CacheRead: 0.1, CacheWrite: 1.25},
+	// Anthropic — legacy
+	"claude-opus-4-5":      {Input: 5.0, Output: 25.0, CacheRead: 0.5, CacheWrite: 6.25},
+	"claude-opus-4-1":      {Input: 15.0, Output: 75.0, CacheRead: 1.5, CacheWrite: 18.75},
+	"claude-opus-4-0":      {Input: 15.0, Output: 75.0, CacheRead: 1.5, CacheWrite: 18.75},
+	"claude-3-opus":        {Input: 15.0, Output: 75.0},
+	"claude-3.5-sonnet":    {Input: 3.0, Output: 15.0, CacheRead: 0.3, CacheWrite: 3.75},
+	"claude-3-haiku":       {Input: 0.25, Output: 1.25},
 
-	// OpenAI
-	"gpt-5.4":              {Input: 2.5, Output: 10.0},
-	"gpt-5.3-codex":        {Input: 2.5, Output: 10.0},
-	"gpt-5.2":              {Input: 2.5, Output: 10.0},
-	"gpt-5-mini":           {Input: 0.15, Output: 0.6},
-	"codex-mini-latest":    {Input: 1.5, Output: 6.0, CacheRead: 0.375},
+	// OpenAI — flagship & reasoning
+	"gpt-5.5":              {Input: 12.5, Output: 75.0},
+	"gpt-5.4":              {Input: 2.5, Output: 15.0, CacheRead: 0.25},
+	"gpt-5-pro":            {Input: 15.0, Output: 120.0},
+	"gpt-5.3-codex":        {Input: 1.75, Output: 14.0, CacheRead: 0.175},
+	"gpt-5.2":              {Input: 1.75, Output: 14.0, CacheRead: 0.175},
+	"o3":                   {Input: 1.1, Output: 4.4},
 	"o3-pro":               {Input: 20.0, Output: 80.0},
+	"o4-mini":              {Input: 1.1, Output: 4.4},
+	// OpenAI — efficiency
+	"gpt-5-mini":           {Input: 0.25, Output: 2.0, CacheRead: 0.025},
+	"gpt-5-nano":           {Input: 0.05, Output: 0.4},
+	"codex-mini-latest":    {Input: 0.75, Output: 3.0, CacheRead: 0.025},
+	// OpenAI — legacy
+	"gpt-4o":               {Input: 2.5, Output: 10.0},
+	"gpt-4o-mini":          {Input: 0.15, Output: 0.6},
 
-	// Google
-	"gemini-3-pro":         {Input: 1.25, Output: 5.0},
-	"gemini-3-pro-preview": {Input: 1.25, Output: 5.0},
-	"gemini-3-flash":       {Input: 0.075, Output: 0.3},
-	"gemini-3-flash-preview": {Input: 0.075, Output: 0.3},
-	"gemini-2.5-pro":       {Input: 1.25, Output: 5.0},
+	// Google — current generation
+	"gemini-3.1-pro":       {Input: 3.6, Output: 21.6, CacheRead: 0.36},
+	"gemini-3.1-flash":     {Input: 0.9, Output: 5.4},
+	"gemini-3-pro":         {Input: 3.6, Output: 21.6, CacheRead: 0.36},
+	"gemini-3-pro-preview": {Input: 3.6, Output: 21.6, CacheRead: 0.36},
+	"gemini-3-flash":       {Input: 0.5, Output: 3.0, CacheRead: 0.05},
+	"gemini-3-flash-preview": {Input: 0.5, Output: 3.0, CacheRead: 0.05},
+	"gemini-2.5-pro":       {Input: 1.25, Output: 10.0, CacheRead: 0.125},
+	"gemini-2.5-flash":     {Input: 0.15, Output: 0.6},
+	"gemini-flash-lite":    {Input: 0.1, Output: 0.4},
 
 	// Cursor (credit-based, routes through various backends)
 	"composer-2-fast":       {Input: 2.0, Output: 10.0},
