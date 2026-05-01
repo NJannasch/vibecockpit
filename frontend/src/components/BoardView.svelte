@@ -441,8 +441,8 @@
 
 <!-- Task Detail Modal -->
 {#if selectedTask}
-<div class="board-overlay" onclick={() => { selectedTask = null; }} role="dialog" aria-modal="true">
-  <div class="board-modal task-modal" onclick={(e) => e.stopPropagation()}>
+<div class="board-overlay" onclick={() => { selectedTask = null; }} role="dialog" aria-modal="true" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') { selectedTask = null; } }}>
+  <div class="board-modal task-modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="task-modal-header">
       <div style="display:flex;align-items:center;gap:.5rem">
         <code class="task-modal-id">{selectedTask.id}</code>
@@ -504,8 +504,8 @@
     </div>
     {#if selectedTask.acceptance?.length}
       <div class="field">
-        <label>Acceptance criteria</label>
-        <ul class="task-detail-accept">
+        <label for="acceptance-criteria">Acceptance criteria</label>
+        <ul id="acceptance-criteria" class="task-detail-accept">
           {#each selectedTask.acceptance as a}
             <li>{a}</li>
           {/each}
@@ -586,8 +586,8 @@
 
 <!-- Create Board Modal -->
 {#if showCreateBoard}
-<div class="board-overlay" onclick={() => { showCreateBoard = false; }} role="dialog" aria-modal="true">
-  <div class="board-modal" onclick={(e) => e.stopPropagation()}>
+<div class="board-overlay" onclick={() => { showCreateBoard = false; }} role="dialog" aria-modal="true" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') { showCreateBoard = false; } }}>
+  <div class="board-modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <h3>Create Board</h3>
     <div class="field">
       <label for="board-name">Board name</label>
@@ -626,8 +626,8 @@
 
 <!-- Add Task Modal -->
 {#if showAddTask}
-<div class="board-overlay" onclick={() => { showAddTask = false; }} role="dialog" aria-modal="true">
-  <div class="board-modal" onclick={(e) => e.stopPropagation()}>
+<div class="board-overlay" onclick={() => { showAddTask = false; }} role="dialog" aria-modal="true" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') { showAddTask = false; } }}>
+  <div class="board-modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <h3>Add Task to {activeBoard?.name}</h3>
     <div class="field">
       <label for="task-title">Title</label>
@@ -778,8 +778,8 @@
   .task-history-detail { color: var(--text-secondary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Modals */
-  .board-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
-  .board-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 90%; max-width: 420px; }
+  .board-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.4); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 2rem 1rem; }
+  .board-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 90%; max-width: 420px; margin: auto 0; }
   .board-modal h3 { font-size: 1rem; margin: 0 0 1rem; }
   .board-modal .field { margin-bottom: .8rem; }
   .board-modal .field label { display: block; font-size: .78rem; font-weight: 500; margin-bottom: .3rem; color: var(--text-secondary); }

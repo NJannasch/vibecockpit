@@ -547,6 +547,7 @@
                 rx="2"
                 fill={heatColor(day.value, heatmap.max)}
                 style="cursor:pointer"
+                role="img"
                 onmouseenter={(e) => heatmapTooltip(e, day)}
                 onmouseleave={hideTooltip}
               />
@@ -608,6 +609,7 @@
                 fill={groupColor(group)}
                 opacity="0.85"
                 style="cursor:pointer"
+                role="img"
                 onmouseenter={(e) => barTooltip(e, date, bucket)}
                 onmouseleave={hideTooltip}
               />
