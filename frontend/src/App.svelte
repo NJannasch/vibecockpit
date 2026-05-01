@@ -25,8 +25,8 @@
 
   // ─── Reactive State (Svelte 5 runes) ───
 
-  const validPages = ["dashboard", "boards", "sessions", "costs", "inventory", "settings"];
-  const redirects = { stats: "dashboard", security: "inventory", mcp: "settings" };
+  const validPages = ["dashboard", "planner", "sessions", "costs", "inventory", "settings"];
+  const redirects = { stats: "dashboard", security: "inventory", mcp: "settings", boards: "planner" };
   function pageFromPath() {
     const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
     if (redirects[p]) return redirects[p];
@@ -309,6 +309,7 @@
   let highlightProvider = $state("");
   let settingsSaved = $state(false);
   let settingsSavedTimer = $state(null);
+  let settingsTab = $state("general");
 
   async function doLaunch(sessionId, provider, modelOverride) {
     try {
@@ -684,43 +685,61 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<!-- Header -->
-<header>
-  <div class="logo">
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
     <span class="logo-icon">&#9670;</span>
-    <span>VibeCockpit</span>
+    <span class="sidebar-logo-text">VibeCockpit</span>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="sidebar-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>
+      <span class="sidebar-icon">&#9670;</span><span class="sidebar-label">Dashboard</span>
+    </button>
+    <button class="sidebar-btn" class:active={page === "planner"} onclick={() => navigateTo("planner")}>
+      <span class="sidebar-icon">&#9635;</span><span class="sidebar-label">Planner</span>
+    </button>
+    <button class="sidebar-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>
+      <span class="sidebar-icon">&#9707;</span><span class="sidebar-label">Sessions</span>
+    </button>
+    <button class="sidebar-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>
+      <span class="sidebar-icon">&#9733;</span><span class="sidebar-label">Costs</span>
+    </button>
+    <button class="sidebar-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>
+      <span class="sidebar-icon">&#9776;</span><span class="sidebar-label">Inventory</span>
+    </button>
+    <button class="sidebar-btn" class:active={page === "settings"} onclick={() => navigateTo("settings")}>
+      <span class="sidebar-icon">&#9881;</span><span class="sidebar-label">Settings</span>
+    </button>
+  </nav>
+  <div class="sidebar-bottom">
+    <button class="sidebar-btn sidebar-btn-sm" onclick={refresh} disabled={scanning} title={lastScanned ? "Last scan: " + relativeTime(lastScanned.toISOString()) : ""}>
+      <span class="sidebar-icon">&#8635;</span><span class="sidebar-label">{scanning ? "Scanning..." : "Refresh"}</span>
+    </button>
+    <button class="sidebar-btn sidebar-btn-sm" onclick={showNewProject}>
+      <span class="sidebar-icon">+</span><span class="sidebar-label">New Project</span>
+    </button>
+    <button class="sidebar-btn sidebar-btn-sm" onclick={toggleTheme} title="Toggle theme">
+      <span class="sidebar-icon">{themeIcon}</span><span class="sidebar-label">Theme</span>
+    </button>
+    <a href="https://github.com/njannasch/vibecockpit" target="_blank" class="sidebar-btn sidebar-btn-sm" title="GitHub" aria-label="GitHub">
+      <span class="sidebar-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.111.82-.26.82-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.762-1.605-2.665-.305-5.467-1.334-5.467-5.93 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0112 5.803c1.02.005 2.045.138 3.003.404 2.291-1.552 3.297-1.23 3.297-1.23.654 1.652.243 2.873.119 3.176.77.84 1.235 1.911 1.235 3.221 0 4.61-2.807 5.624-5.479 5.92.43.372.823 1.102.823 2.222v3.293c0 .319.218.694.825.576C20.565 21.796 24 17.298 24 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+      </span><span class="sidebar-label">GitHub</span>
+    </a>
     {#if versionInfo?.current}
-      {#if versionInfo.updateAvailable}
-        <a class="version version-update" href={versionInfo.releaseUrl} target="_blank" title={"Update available: " + versionInfo.latest}>
-          {versionInfo.current}<span class="version-arrow"> ↑</span>
-        </a>
-      {:else}
-        <span class="version" title={versionInfo.latest ? "Up to date (latest: " + versionInfo.latest + ")" : "Current version"}>{versionInfo.current}</span>
-      {/if}
+      <div class="sidebar-version">
+        {#if versionInfo.updateAvailable}
+          <a class="version version-update" href={versionInfo.releaseUrl} target="_blank">{versionInfo.current} ↑</a>
+        {:else}
+          <span class="version">{versionInfo.current}</span>
+        {/if}
+      </div>
     {/if}
   </div>
-  <nav class="header-nav">
-    <button class="nav-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>Dashboard</button>
-    <button class="nav-btn" class:active={page === "boards"} onclick={() => navigateTo("boards")}>Boards</button>
-    <button class="nav-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>Sessions</button>
-    <button class="nav-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>Costs</button>
-    <button class="nav-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>Inventory</button>
-    <button class="nav-btn" class:active={page === "settings"} onclick={() => navigateTo("settings")}>Settings</button>
-  </nav>
-  <div class="header-actions">
-    <button class="btn btn-sm" onclick={refresh} disabled={scanning} title={lastScanned ? "Last scan: " + relativeTime(lastScanned.toISOString()) : "Scanning..."}>
-      {scanning ? "Scanning..." : "Refresh"}
-    </button>
-    <button class="btn btn-primary btn-sm" onclick={showNewProject}>+ New</button>
-    <button class="btn btn-icon btn-ghost" onclick={toggleTheme} title="Toggle theme">{themeIcon}</button>
-    <a href="https://github.com/njannasch/vibecockpit" target="_blank" class="btn btn-icon btn-ghost" title="GitHub" aria-label="GitHub">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.111.82-.26.82-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.762-1.605-2.665-.305-5.467-1.334-5.467-5.93 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0112 5.803c1.02.005 2.045.138 3.003.404 2.291-1.552 3.297-1.23 3.297-1.23.654 1.652.243 2.873.119 3.176.77.84 1.235 1.911 1.235 3.221 0 4.61-2.807 5.624-5.479 5.92.43.372.823 1.102.823 2.222v3.293c0 .319.218.694.825.576C20.565 21.796 24 17.298 24 12c0-6.63-5.37-12-12-12z"/>
-      </svg>
-    </a>
-  </div>
-</header>
-
+</aside>
+<div class="app-content">
 {#if !lastScanned && scanning}
   <main>
     <div style="max-width:800px;margin:3rem auto;padding:0 1rem">
@@ -1021,7 +1040,7 @@
     VibeCockpit scans your local AI tool directories (e.g. <code>~/.claude</code>, <code>~/.codex</code>) to discover sessions, configs, and extensions. All analysis happens entirely on your machine — no data is sent anywhere.
   </div>
 </main>
-{:else if page === "boards"}
+{:else if page === "planner"}
   <main>
     <BoardView sessions={sessionList} />
   </main>
@@ -1038,14 +1057,20 @@
   </main>
 {:else if page === "settings"}
   <main>
-    {@render settingsPage()}
-    {#if configData.enableMcp}
-      <div style="max-width:900px;margin:0 auto;padding:0 1rem 2rem">
-        {@render mcpPage()}
-      </div>
+    <div class="settings-tabs">
+      <button class="settings-tab" class:active={settingsTab === "general"} onclick={() => { settingsTab = "general"; }}>General</button>
+      {#if configData.enableMcp}
+        <button class="settings-tab" class:active={settingsTab === "mcp"} onclick={() => { settingsTab = "mcp"; loadMCPAudit(); }}>MCP</button>
+      {/if}
+    </div>
+    {#if settingsTab === "general"}
+      {@render settingsPage()}
+    {:else if settingsTab === "mcp"}
+      {@render mcpPage()}
     {/if}
   </main>
 {/if}
+</div>
 
 {#snippet mcpPage()}
   {@const toolColors = {
@@ -1413,7 +1438,7 @@
           Tools: <code>list_sessions</code>, <code>search_sessions</code>, <code>get_session_detail</code>, <code>scan_secrets</code>, <code>get_costs</code>, <code>get_stats</code>, <code>get_inventory</code>, <code>rescan</code>
         </p>
         <p style="font-size:.78rem;color:var(--text-muted);margin:.4rem 0 0">
-          View tool call history in the <button class="link-btn" onclick={() => navigateTo("mcp")}>MCP tab</button>.
+          View tool call history in the <button class="link-btn" onclick={() => { settingsTab = "mcp"; loadMCPAudit(); }}>MCP tab</button>.
         </p>
       </div>
       {/if}

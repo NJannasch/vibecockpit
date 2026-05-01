@@ -55,28 +55,36 @@ code{
 }
 
 /* ─── Header ─── */
-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:1.25rem 2rem;border-bottom:1px solid var(--border);
-  background:var(--surface);position:sticky;top:0;z-index:100;
+/* ─── Sidebar ─── */
+.sidebar{
+  position:fixed;top:0;left:0;bottom:0;width:200px;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:100;
 }
-.logo{display:flex;align-items:center;gap:.6rem;font-size:1.2rem;font-weight:700}
-.logo-icon{color:var(--primary);font-size:1.4rem}
-.logo-sub{font-size:.8rem;color:var(--text-secondary);font-weight:400;margin-left:.5rem}
+.sidebar-logo{display:flex;align-items:center;gap:.5rem;padding:1.2rem 1rem .8rem;font-size:1.1rem;font-weight:700}
+.logo-icon{color:var(--primary);font-size:1.3rem}
+.sidebar-nav{flex:1;padding:.4rem .5rem;display:flex;flex-direction:column;gap:.1rem}
+.sidebar-btn{
+  display:flex;align-items:center;gap:.6rem;width:100%;
+  padding:.5rem .7rem;border-radius:var(--radius-sm);
+  font-size:.85rem;font-weight:500;cursor:pointer;
+  border:none;background:none;color:var(--text-secondary);
+  font-family:inherit;text-align:left;text-decoration:none;
+  transition:all var(--transition);
+}
+.sidebar-btn:hover{background:var(--surface-hover);color:var(--text)}
+.sidebar-btn.active{background:var(--primary-glow);color:var(--primary);font-weight:600}
+.sidebar-icon{width:1.1rem;text-align:center;font-size:.95rem;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center}
+.sidebar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-bottom{padding:.5rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.1rem}
+.sidebar-btn-sm{font-size:.78rem;padding:.35rem .7rem}
+.sidebar-version{padding:.3rem .7rem;text-align:center}
 .version{font-size:.7rem;font-weight:500;color:var(--text-secondary);background:var(--surface-2,rgba(0,0,0,.04));padding:.15rem .5rem;border-radius:999px;letter-spacing:.02em;text-decoration:none}
 .version-update{color:#fff;background:var(--primary);cursor:pointer}
 .version-update:hover{filter:brightness(1.1)}
-.version-arrow{font-weight:700;margin-left:.1rem}
-.header-actions{display:flex;gap:.6rem}
-.header-nav{display:flex;gap:.2rem}
-.nav-btn{
-  padding:.45rem .9rem;border-radius:var(--radius-sm);
-  font-size:.85rem;font-weight:500;cursor:pointer;
-  border:none;background:none;color:var(--text-secondary);
-  transition:all var(--transition);
-}
-.nav-btn:hover{background:var(--surface-hover);color:var(--text)}
-.nav-btn.active{background:var(--primary-glow);color:var(--primary);font-weight:600}
+
+/* ─── App layout ─── */
+.app-content{margin-left:200px;min-height:100vh}
 
 /* ─── Buttons ─── */
 .btn{
@@ -171,6 +179,11 @@ main{flex:1;padding:1.5rem 2rem 3rem;animation:pageIn .2s ease}
 .cost-badge-remote{background:var(--surface-active);color:var(--text-secondary);border:1px solid var(--border)}
 
 /* ─── Settings Page ─── */
+.settings-tabs{display:flex;gap:.2rem;max-width:900px;margin:1.2rem auto .5rem;padding:0 1rem}
+.settings-tab{padding:.4rem .8rem;border:none;background:none;font-size:.85rem;font-weight:500;
+  color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-family:inherit;transition:all .15s}
+.settings-tab:hover{background:var(--surface-hover);color:var(--text)}
+.settings-tab.active{background:var(--primary-glow);color:var(--primary);font-weight:600}
 .settings-page{max-width:680px;margin:1.5rem auto;padding:0 1rem}
 .settings-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem}
 .settings-header h2{font-size:1.2rem}

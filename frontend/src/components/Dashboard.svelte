@@ -124,8 +124,8 @@
   <!-- Boards banner -->
   <div class="boards-banner">
     <div class="boards-banner-header">
-      <h3 class="recent-heading">Boards</h3>
-      <button class="boards-banner-link" onclick={() => onnavigate("boards")}>
+      <h3 class="recent-heading">Planner</h3>
+      <button class="boards-banner-link" onclick={() => onnavigate("planner")}>
         {boards.length > 0 ? "View all" : "Create board"} <span>&rarr;</span>
       </button>
     </div>
@@ -135,7 +135,7 @@
           {@const active = (b.tasks || []).filter(t => t.status !== "archived")}
           {@const working = active.filter(t => t.status === "in-progress").length}
           {@const done = active.filter(t => t.status === "done").length}
-          <button class="boards-banner-card" onclick={() => onnavigate("boards")}>
+          <button class="boards-banner-card" onclick={() => onnavigate("planner")}>
             <span class="boards-banner-name">{b.name}</span>
             <span class="boards-banner-stats">
               {active.length} tasks
