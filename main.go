@@ -312,14 +312,18 @@ func runBoard(cfg *config.Config, args []string) {
 		}
 		fmt.Printf("Board: %s\nProject: %s\nTool: %s  Model: %s\n\n",
 			b.Name, b.Project, b.Defaults.Tool, b.Defaults.Model)
-		fmt.Fprintln(w, "ID\tTITLE\tSTATUS\tPRIORITY\tTOOL\tCOST")
+		fmt.Fprintln(w, "ID\tTITLE\tSTATUS\tPRIORITY\tTOOL\tCOST\tSESSIONS")
 		for _, t := range b.Tasks {
 			tool := t.Tool
 			if tool == "" {
 				tool = b.Defaults.Tool
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				t.ID, t.Title, t.Status, t.Priority, tool, t.Cost)
+			cost := ""
+			if t.Cost > 0 {
+				cost = fmt.Sprintf("$%.2f", t.Cost)
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\n",
+				t.ID, t.Title, t.Status, t.Priority, tool, cost, len(t.Sessions))
 		}
 		_ = w.Flush()
 

@@ -74,8 +74,8 @@
 
   function totalCost() {
     return (activeBoard?.tasks || [])
-      .filter(t => t.cost)
-      .reduce((sum, t) => sum + parseFloat(t.cost.replace("$", "") || 0), 0);
+      .filter(t => t.cost > 0)
+      .reduce((sum, t) => sum + t.cost, 0);
   }
 
   async function load() {
@@ -356,8 +356,8 @@
                     {#if task.priority}
                       <span class="kanban-priority" style="color:{priorityColors[task.priority] || 'var(--text-muted)'}">{task.priority}</span>
                     {/if}
-                    {#if task.cost}
-                      <span class="kanban-cost">{task.cost}</span>
+                    {#if task.cost > 0}
+                      <span class="kanban-cost">${task.cost.toFixed(2)}</span>
                     {/if}
                   </div>
                   <div class="kanban-card-title">{task.title}</div>
@@ -514,8 +514,14 @@
       {#if selectedTask.session}
         <div class="task-meta-row"><span class="task-meta-label">Session</span> <code>{selectedTask.session}</code></div>
       {/if}
-      {#if selectedTask.cost}
-        <div class="task-meta-row"><span class="task-meta-label">Cost</span> <span>{selectedTask.cost}</span></div>
+      {#if selectedTask.sessions?.length}
+        <div class="task-meta-row">
+          <span class="task-meta-label">Sessions</span>
+          <span class="task-sessions">{#each selectedTask.sessions as sid}<code class="task-session-id">{sid}</code>{/each}</span>
+        </div>
+      {/if}
+      {#if selectedTask.cost > 0}
+        <div class="task-meta-row"><span class="task-meta-label">Cost</span> <span class="task-cost-value">${selectedTask.cost.toFixed(2)}</span></div>
       {/if}
       {#if selectedTask.summary}
         <div class="task-meta-row" style="flex-direction:column;align-items:stretch">
@@ -736,6 +742,9 @@
   .task-modal-meta { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
   .task-meta-row { display: flex; gap: .6rem; align-items: center; margin-bottom: .3rem; font-size: .8rem; }
   .task-meta-label { font-size: .7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; min-width: 5.5rem; flex-shrink: 0; }
+  .task-sessions { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .task-session-id { font-size: .72rem; background: var(--surface); border: 1px solid var(--border); padding: .1rem .35rem; border-radius: 3px; }
+  .task-cost-value { font-weight: 600; color: var(--warning, #f59e0b); }
   .task-meta-timestamps { display: flex; flex-wrap: wrap; gap: .3rem .8rem; font-size: .72rem; color: var(--text-muted); margin-bottom: .4rem; }
   .task-history { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
   .task-history-title { font-size: .72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; }

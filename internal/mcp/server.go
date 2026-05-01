@@ -284,6 +284,10 @@ func (s *Server) toolDefinitions() []map[string]any {
 						"type":        "string",
 						"description": "Updated task description.",
 					},
+					"session_id": map[string]any{
+						"type":        "string",
+						"description": "Link a session ID to this task for cost tracking.",
+					},
 				},
 				"required": []string{"board", "task_id"},
 			},
@@ -552,6 +556,7 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			Model       string `json:"model"`
 			Summary     string `json:"summary"`
 			Description string `json:"description"`
+			SessionID   string `json:"session_id"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
 			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
@@ -599,6 +604,9 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		if args.Description != "" {
 			t.Description = args.Description
 			t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		if args.SessionID != "" {
+			t.LinkSession(args.SessionID, by)
 		}
 		if err := b.Save(); err != nil {
 			writeError(w, req.ID, -32602, "Failed to save: "+err.Error())

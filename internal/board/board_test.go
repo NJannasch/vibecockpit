@@ -26,12 +26,13 @@ tasks:
     title: Fix Stripe webhook retry logic
     status: in-progress
     claimed_by: claude-code
-    session: ses_abc123
+    sessions:
+      - ses_abc123
   - id: add-metrics
     title: Add Prometheus metrics endpoint
     status: done
     completed: "2026-04-30T16:45:00Z"
-    cost: "$11.20"
+    cost: 11.20
 `
 
 func TestLoadBoard(t *testing.T) {
@@ -489,6 +490,67 @@ func TestDeleteBoard(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Error("board file should be deleted")
+	}
+}
+
+func TestLinkSession(t *testing.T) {
+	task := &Task{ID: "test", Status: "in-progress"}
+
+	task.LinkSession("ses_abc123", "mcp-agent")
+	if len(task.Sessions) != 1 || task.Sessions[0] != "ses_abc123" {
+		t.Errorf("sessions = %v, want [ses_abc123]", task.Sessions)
+	}
+	if len(task.History) != 1 || task.History[0].Action != "session-linked" {
+		t.Error("expected session-linked history entry")
+	}
+
+	// Duplicate should be ignored
+	task.LinkSession("ses_abc123", "mcp-agent")
+	if len(task.Sessions) != 1 {
+		t.Errorf("duplicate not ignored, sessions = %v", task.Sessions)
+	}
+	if len(task.History) != 1 {
+		t.Error("duplicate should not add history entry")
+	}
+
+	// Second unique session
+	task.LinkSession("ses_def456", "human")
+	if len(task.Sessions) != 2 {
+		t.Errorf("sessions = %d, want 2", len(task.Sessions))
+	}
+	if task.History[1].By != "human" {
+		t.Errorf("history[1].by = %q, want %q", task.History[1].By, "human")
+	}
+}
+
+func TestSessionLinkingRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sessions.yaml")
+
+	b := &Board{Name: "test", Project: ".", FilePath: path}
+	b.AddTask("Linked task", "high", "")
+	task := &b.Tasks[0]
+	task.LinkSession("ses_001", "mcp-agent")
+	task.LinkSession("ses_002", "mcp-agent")
+	task.Cost = 12.50
+
+	if err := b.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	b2, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t2, _ := b2.FindTask("linked-task")
+	if t2 == nil {
+		t.Fatal("task not found after reload")
+	}
+	if len(t2.Sessions) != 2 {
+		t.Errorf("sessions = %d, want 2", len(t2.Sessions))
+	}
+	if t2.Cost != 12.50 {
+		t.Errorf("cost = %f, want 12.50", t2.Cost)
 	}
 }
 
