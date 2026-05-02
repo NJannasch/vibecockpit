@@ -66,6 +66,15 @@
   let showPrivacyNotice = $state(!localStorage.getItem("vibecockpit-privacy-ack"));
   let mcpAuditLog = $state([]);
   let mcpAuditExpanded = $state(new Set());
+
+
+  const agentToolDefaults = {
+    claude: { files: ".mcp.json", globalDir: "~/.claude/" },
+    codex: { files: "codex.json, .codex/config.toml", globalDir: "~/.codex/" },
+    gemini: { files: ".gemini/settings.json", globalDir: "~/.gemini/" },
+    opencode: { files: "opencode.json", globalDir: "~/.config/opencode/" },
+    cursor: { files: ".cursor/mcp.json", globalDir: "~/.cursor/" },
+  };
   let mcpAuditSearch = $state("");
   let mcpAuditPage = $state(0);
   const mcpAuditPageSize = 20;
@@ -1166,6 +1175,66 @@
         onchange={(e) => save(c => ({...c, agentAllowedTools: e.target.value}))}
         placeholder="One tool pattern per line..."
       ></textarea>
+    </div>
+
+    <div class="settings-card">
+      <h3 class="settings-section">Tool Config Files</h3>
+      <p style="color:var(--text-muted);font-size:.82rem;margin:0 0 .5rem">
+        When spawning an agent, VibeCockpit copies config files into the worktree so the tool has its settings.
+      </p>
+      {#each Object.entries(agentToolDefaults) as [tool, info] (tool)}
+        {@const tcfg = configData.toolConfigFiles?.[tool] || ""}
+        {@const useCustom = tcfg.startsWith("custom:")}
+        {@const noGlobal = tcfg === "no-global" || tcfg.startsWith("no-global,")}
+        {@const noProject = tcfg === "no-project" || tcfg.includes("no-project")}
+        <div class="tool-config-row">
+          <div class="tool-config-header">
+            <span style="font-weight:600;font-size:.85rem">{tool}</span>
+            <span class="tool-config-files">{info.files}</span>
+          </div>
+          <div class="tool-config-options">
+            <label class="tool-config-option">
+              <input type="checkbox" checked={!useCustom && !noProject}
+                onchange={(e) => {
+                  if (!e.target.checked) {
+                    save(c => ({...c, toolConfigFiles: {...(c.toolConfigFiles || {}), [tool]: noGlobal ? "no-project,no-global" : "no-project"}}));
+                  } else {
+                    save(c => ({...c, toolConfigFiles: {...(c.toolConfigFiles || {}), [tool]: noGlobal ? "no-global" : ""}}));
+                  }
+                }} />
+              <span>Copy project config if available</span>
+            </label>
+            <label class="tool-config-option">
+              <input type="checkbox" checked={!useCustom && !noGlobal}
+                onchange={(e) => {
+                  if (!e.target.checked) {
+                    save(c => ({...c, toolConfigFiles: {...(c.toolConfigFiles || {}), [tool]: noProject ? "no-project,no-global" : "no-global"}}));
+                  } else {
+                    save(c => ({...c, toolConfigFiles: {...(c.toolConfigFiles || {}), [tool]: noProject ? "no-project" : ""}}));
+                  }
+                }} />
+              <span>Fall back to global config <code>{info.globalDir}</code></span>
+            </label>
+            <label class="tool-config-option">
+              <input type="checkbox" checked={useCustom}
+                onchange={(e) => {
+                  if (e.target.checked) {
+                    save(c => ({...c, toolConfigFiles: {...(c.toolConfigFiles || {}), [tool]: "custom:"}}));
+                  } else {
+                    save(c => ({...c, toolConfigFiles: {...(c.toolConfigFiles || {}), [tool]: ""}}));
+                  }
+                }} />
+              <span>Use custom path instead:</span>
+            </label>
+            {#if useCustom}
+              <input type="text" class="tool-config-custom"
+                value={tcfg.replace("custom:", "")}
+                onchange={(e) => save(c => ({...c, toolConfigFiles: {...(c.toolConfigFiles || {}), [tool]: "custom:" + e.target.value}}))}
+                placeholder="/absolute/path/to/config.json" />
+            {/if}
+          </div>
+        </div>
+      {/each}
     </div>
   </div>
 {/snippet}
