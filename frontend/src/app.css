@@ -281,6 +281,8 @@ main{flex:1;padding:1.5rem 2rem 3rem;animation:pageIn .2s ease}
 .mcp-col-params{color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .mcp-col-results{text-align:right;font-weight:500}
 .mcp-col-hash code{font-size:.68rem;color:var(--text-muted)}
+.mcp-audit-search{font-size:.82rem;padding:.35rem .6rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit;width:14rem}
+.mcp-pagination{display:flex;align-items:center;justify-content:center;gap:.8rem;padding:.6rem 0}
 
 .mcp-audit-detail{padding:.6rem .8rem .8rem 1.2rem;background:var(--bg);border-bottom:1px solid var(--border)}
 .mcp-detail-section{display:flex;gap:.6rem;margin-bottom:.4rem;align-items:baseline;font-size:.8rem}

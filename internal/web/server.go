@@ -21,6 +21,7 @@ import (
 	"vibecockpit/internal/audit"
 	"vibecockpit/internal/board"
 	"vibecockpit/internal/config"
+	"vibecockpit/internal/runner"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/launcher"
@@ -85,6 +86,7 @@ type apiConfig struct {
 	RemoteSources      []map[string]any   `json:"remoteSources,omitempty"`
 	EnableScanner      bool               `json:"enableScanner"`
 	EnableMCP          bool               `json:"enableMcp"`
+	AgentPrompt        string             `json:"agentPrompt,omitempty"`
 	ExtraPath          []string           `json:"extraPath,omitempty"`
 	ScanSkipRules      []string           `json:"scanSkipRules,omitempty"`
 	ScanExtraHints     []string           `json:"scanExtraHints,omitempty"`
@@ -144,6 +146,13 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("POST /api/boards/{name}/tasks/{id}/move", s.handleMoveTaskToBoard)
 	mux.HandleFunc("DELETE /api/boards/{name}", s.handleDeleteBoard)
 	mux.HandleFunc("DELETE /api/boards/{name}/tasks/{id}", s.handleDeleteTask)
+	mux.HandleFunc("POST /api/boards/{name}/tasks/{id}/run", s.handleRunTask)
+	mux.HandleFunc("GET /api/agents", s.handleGetAgents)
+	mux.HandleFunc("POST /api/agents/{taskId}/stop", s.handleStopAgent)
+	mux.HandleFunc("GET /api/agents/{taskId}/log", s.handleAgentLog)
+	mux.HandleFunc("DELETE /api/agents/{taskId}", s.handleDeleteAgentRun)
+	mux.HandleFunc("GET /api/agents/{taskId}/diff", s.handleAgentDiff)
+	mux.HandleFunc("POST /api/agents/{taskId}/merge", s.handleAgentMerge)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
@@ -275,12 +284,28 @@ func killStaleVibecockpit(port int) (bool, error) {
 	return true, nil
 }
 
+func isWorktreeSession(path string) bool {
+	return strings.Contains(path, ".vibecockpit/worktrees/")
+}
+
 func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	forceRefresh := r.URL.Query().Get("refresh") == "true"
+	showWorktrees := r.URL.Query().Get("worktrees") == "true"
 
 	if !forceRefresh && s.cachedResult != nil && time.Since(s.cachedAt) < s.cacheTTL {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(s.cachedResult)
+		if showWorktrees {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(s.cachedResult)
+		} else {
+			filtered := make([]apiSession, 0)
+			for _, sess := range s.cachedResult {
+				if !isWorktreeSession(sess.ProjectPath) {
+					filtered = append(filtered, sess)
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(filtered)
+		}
 		return
 	}
 
@@ -315,6 +340,16 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	s.cachedResult = out
 	s.cachedAt = time.Now()
+
+	if !showWorktrees {
+		filtered := make([]apiSession, 0)
+		for _, sess := range out {
+			if !isWorktreeSession(sess.ProjectPath) {
+				filtered = append(filtered, sess)
+			}
+		}
+		out = filtered
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
@@ -506,6 +541,7 @@ func (s *server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		ProviderPaths:      s.cfg.ProviderPaths,
 		EnableScanner:      s.cfg.EnableScanner,
 		EnableMCP:          s.cfg.EnableMCP,
+		AgentPrompt:        s.cfg.AgentPrompt,
 		RemoteSources:      s.cfg.RemoteSources,
 		ExtraPath:          s.cfg.ExtraPath,
 		ScanSkipRules:      s.cfg.ScanSkipRules,
@@ -554,6 +590,7 @@ func (s *server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cfg.EnableMCP = req.EnableMCP
 	s.cfg.EnableScanner = req.EnableScanner
+	s.cfg.AgentPrompt = req.AgentPrompt
 	if err := s.cfg.Save(); err != nil {
 		jsonError(w, err.Error(), 500)
 		return
@@ -1036,6 +1073,20 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	if v, ok := req["session_id"].(string); ok && v != "" {
 		t.LinkSession(v, by)
 	}
+	if v, ok := req["acceptance"].([]any); ok {
+		var acc []string
+		for _, a := range v {
+			if s, ok := a.(string); ok {
+				acc = append(acc, s)
+			}
+		}
+		t.Acceptance = acc
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if v, ok := req["maxIterations"].(float64); ok {
+		t.MaxIterations = int(v)
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
 	if err := b.Save(); err != nil {
 		jsonError(w, err.Error(), 500)
 		return
@@ -1085,6 +1136,83 @@ func (s *server) handleDeleteBoard(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := board.DeleteBoard(name, s.cfg.NewProjectDir); err != nil {
 		jsonError(w, err.Error(), 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleRunTask(w http.ResponseWriter, r *http.Request) {
+	boardName := r.PathValue("name")
+	taskID := r.PathValue("id")
+
+	go func() {
+		opts := runner.RunOpts{TaskID: taskID, BoardName: boardName, Headless: true}
+		if err := runner.Run(s.cfg, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "Agent run error: %v\n", err)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "spawned", "task": taskID})
+}
+
+func (s *server) handleGetAgents(w http.ResponseWriter, _ *http.Request) {
+	runs := runner.GetActiveRuns()
+	if runs == nil {
+		runs = []runner.AgentRun{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(runs)
+}
+
+func (s *server) handleStopAgent(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskId")
+	if err := runner.StopAgent(taskID); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleAgentLog(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskId")
+	logResp, err := runner.GetAgentLog(taskID)
+	if err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(logResp)
+}
+
+func (s *server) handleDeleteAgentRun(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskId")
+	cleanupBranch := r.URL.Query().Get("branch") == "true"
+	if err := runner.DeleteRun(taskID, cleanupBranch); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleAgentDiff(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskId")
+	diff, err := runner.GetAgentDiff(taskID)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"diff": diff})
+}
+
+func (s *server) handleAgentMerge(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskId")
+	if err := runner.MergeAgentBranch(taskID); err != nil {
+		jsonError(w, err.Error(), 400)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

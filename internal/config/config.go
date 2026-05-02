@@ -22,6 +22,7 @@ type Config struct {
 	PluginConfigs   map[string]map[string]any `yaml:"plugins,omitempty"`
 	RemoteSources   []map[string]any          `yaml:"remote_sources,omitempty"`
 	ExtraPath       []string                  `yaml:"extra_path,omitempty"`
+	AgentPrompt     string                    `yaml:"agent_prompt,omitempty"`
 	EnableMCP       bool                      `yaml:"enable_mcp,omitempty"`
 	EnableScanner   bool                      `yaml:"enable_scanner,omitempty"`
 	ScanSkipRules   []string                  `yaml:"scan_skip_rules,omitempty"`

@@ -21,10 +21,11 @@
   import CostsDashboard from "./components/CostsDashboard.svelte";
   import ToolInventory from "./components/ToolInventory.svelte";
   import BoardView from "./components/BoardView.svelte";
+  import AgentMonitor from "./components/AgentMonitor.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
 
-  const validPages = ["dashboard", "planner", "sessions", "costs", "inventory", "settings"];
+  const validPages = ["dashboard", "planner", "agents", "sessions", "costs", "inventory", "settings"];
   const redirects = { stats: "dashboard", security: "inventory", mcp: "settings", boards: "planner" };
   function pageFromPath() {
     const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
@@ -65,6 +66,16 @@
   let showPrivacyNotice = $state(!localStorage.getItem("vibecockpit-privacy-ack"));
   let mcpAuditLog = $state([]);
   let mcpAuditExpanded = $state(new Set());
+  let mcpAuditSearch = $state("");
+  let mcpAuditPage = $state(0);
+  const mcpAuditPageSize = 20;
+  let mcpAuditFiltered = $derived(mcpAuditLog.filter(e => {
+    if (!mcpAuditSearch) return true;
+    const q = mcpAuditSearch.toLowerCase();
+    return e.tool.toLowerCase().includes(q) || JSON.stringify(e.params).toLowerCase().includes(q) || (e.resultHash || "").includes(q);
+  }));
+  let mcpAuditTotalPages = $derived(Math.ceil(mcpAuditFiltered.length / mcpAuditPageSize));
+  let mcpAuditPaged = $derived(mcpAuditFiltered.slice(mcpAuditPage * mcpAuditPageSize, (mcpAuditPage + 1) * mcpAuditPageSize));
 
   async function loadMCPAudit() {
     try {
@@ -702,6 +713,10 @@
       <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
       <span class="sidebar-label">Planner</span>
     </button>
+    <button class="sidebar-btn" class:active={page === "agents"} onclick={() => navigateTo("agents")}>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+      <span class="sidebar-label">Agents</span>
+    </button>
     <button class="sidebar-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>
       <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       <span class="sidebar-label">Sessions</span>
@@ -959,7 +974,7 @@
               <div class="card-main">
                 <div class="card-project">
                   {#if filterData.fuzzyTerms?.length}
-                    {@html highlightHtml(s.projectName, filterData.fuzzyTerms)}
+                    {@html highlightHtml(s.projectName, filterData.fuzzyTerms)}<!-- eslint-disable-line svelte/no-at-html-tags -->
                   {:else}
                     {s.projectName}
                   {/if}
@@ -1010,7 +1025,7 @@
           <div class="card-main">
             <div class="card-project">
               {#if filterData.fuzzyTerms?.length}
-                {@html highlightHtml(s.projectName, filterData.fuzzyTerms)}
+                {@html highlightHtml(s.projectName, filterData.fuzzyTerms)}<!-- eslint-disable-line svelte/no-at-html-tags -->
               {:else}
                 {s.projectName}
               {/if}
@@ -1060,6 +1075,14 @@
   <main>
     <BoardView sessions={sessionList} />
   </main>
+{:else if page === "agents"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Agents</h1>
+    <span class="page-bar-subtitle">Monitor spawned agents</span>
+  </div>
+  <main>
+    <AgentMonitor onnavigate={navigateTo} />
+  </main>
 {:else if page === "costs"}
   <div class="page-bar">
     <h1 class="page-bar-title">Costs</h1>
@@ -1082,23 +1105,70 @@
 {:else if page === "settings"}
   <div class="page-bar">
     <h1 class="page-bar-title">Settings</h1>
-    <span class="page-bar-spacer"></span>
-    <div class="page-bar-actions">
-      <button class="settings-tab" class:active={settingsTab === "general"} onclick={() => { settingsTab = "general"; }}>General</button>
-      {#if configData.enableMcp}
-        <button class="settings-tab" class:active={settingsTab === "mcp"} onclick={() => { settingsTab = "mcp"; loadMCPAudit(); }}>MCP</button>
-      {/if}
-    </div>
+    <button class="settings-tab" class:active={settingsTab === "general"} onclick={() => { settingsTab = "general"; }}>General</button>
+    <button class="settings-tab" class:active={settingsTab === "agent"} onclick={() => { settingsTab = "agent"; }}>Agent</button>
+    {#if configData.enableMcp}
+      <button class="settings-tab" class:active={settingsTab === "mcp"} onclick={() => { settingsTab = "mcp"; loadMCPAudit(); }}>MCP</button>
+    {/if}
   </div>
   <main>
     {#if settingsTab === "general"}
       {@render settingsPage()}
+    {:else if settingsTab === "agent"}
+      {@render agentSettingsPage()}
     {:else if settingsTab === "mcp"}
       {@render mcpPage()}
     {/if}
   </main>
 {/if}
 </div>
+
+{#snippet agentSettingsPage()}
+  {@const save = (updater) => {
+    const u = updater(configData);
+    config.set(u);
+    saveConfig(u);
+  }}
+  <div class="settings-page">
+    <div class="settings-card">
+      <h3 class="settings-section">Agent Prompt</h3>
+      <p style="color:var(--text-muted);font-size:.82rem;margin:0 0 .5rem">
+        This prompt is prepended to every task when spawning an agent via <code>vibecockpit run</code> or the Run button.
+      </p>
+      <textarea
+        style="width:100%;min-height:100px;font-size:.82rem;padding:.5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit;resize:vertical;box-sizing:border-box"
+        value={configData.agentPrompt || "IMPORTANT: Commit your changes with descriptive commit messages before finishing. Write your progress to .vibecockpit/STATUS.md including what you did, what's left, and any blockers. Update both before exiting."}
+        onchange={(e) => save(c => ({...c, agentPrompt: e.target.value}))}
+        placeholder="Instructions prepended to every agent task prompt..."
+      ></textarea>
+    </div>
+
+    <div class="settings-card">
+      <h3 class="settings-section">Ralph Loop Defaults</h3>
+      <div class="settings-row">
+        <div class="settings-label">
+          <span>Default max iterations</span>
+          <span class="field-hint">How many times to auto-retry when acceptance criteria fail. Applied to new tasks.</span>
+        </div>
+        <input type="number" min="1" max="10" style="width:4rem" value={configData.defaultMaxIterations || 1}
+          onchange={(e) => save(c => ({...c, defaultMaxIterations: parseInt(e.target.value) || 1}))} />
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3 class="settings-section">Allowed Tools (Claude Code dontAsk mode)</h3>
+      <p style="color:var(--text-muted);font-size:.82rem;margin:0 0 .5rem">
+        Tools the agent is allowed to use in headless mode. One per line. Default includes Read, Edit, Write, git, and common build tools.
+      </p>
+      <textarea
+        style="width:100%;min-height:80px;font-size:.78rem;padding:.5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:monospace;resize:vertical;box-sizing:border-box"
+        value={configData.agentAllowedTools || "Read\nEdit\nWrite\nBash(git *)\nBash(go *)\nBash(npm *)\nBash(npx *)\nBash(make *)\nBash(python *)\nBash(cargo *)\nBash(node *)\nmcp__vibecockpit"}
+        onchange={(e) => save(c => ({...c, agentAllowedTools: e.target.value}))}
+        placeholder="One tool pattern per line..."
+      ></textarea>
+    </div>
+  </div>
+{/snippet}
 
 {#snippet mcpPage()}
   {@const toolColors = {
@@ -1109,7 +1179,12 @@
     get_costs: "#f59e0b",
     get_stats: "#10b981",
     get_inventory: "#3b82f6",
-    rescan: "#06b6d4"
+    rescan: "#06b6d4",
+    list_boards: "#8b5cf6",
+    list_tasks: "#6366f1",
+    get_task: "#a78bfa",
+    update_task: "#f59e0b",
+    create_task: "#10b981"
   }}
   {@const toolCounts = mcpAuditLog.reduce((acc, e) => { acc[e.tool] = (acc[e.tool] || 0) + 1; return acc; }, {})}
   <div class="mcp-page">
@@ -1157,6 +1232,10 @@
         <p style="font-size:.82rem;color:var(--text-secondary)">Tool calls will appear here once an AI assistant uses VibeCockpit via MCP.</p>
       </div>
     {:else}
+      <div style="display:flex;gap:.5rem;margin-bottom:.5rem;align-items:center">
+        <input type="text" class="mcp-audit-search" placeholder="Search tools, params..." bind:value={mcpAuditSearch} oninput={() => { mcpAuditPage = 0; }} />
+        <span style="font-size:.72rem;color:var(--text-muted)">{mcpAuditFiltered.length} of {mcpAuditLog.length}</span>
+      </div>
       <div class="mcp-audit-table mcp-audit-full">
         <div class="mcp-audit-row mcp-audit-header">
           <span class="mcp-col-time">Time</span>
@@ -1165,7 +1244,7 @@
           <span class="mcp-col-results">Results</span>
           <span class="mcp-col-hash">Hash</span>
         </div>
-        {#each mcpAuditLog as entry, i (i)}
+        {#each mcpAuditPaged as entry, i (mcpAuditPage * mcpAuditPageSize + i)}
           <button class="mcp-audit-row mcp-audit-data" class:mcp-row-expanded={mcpAuditExpanded.has(i)} onclick={() => toggleAuditRow(i)}>
             <span class="mcp-col-time" title={entry.timestamp}>{relativeTime(entry.timestamp)}</span>
             <span class="mcp-col-tool">
@@ -1202,6 +1281,13 @@
           {/if}
         {/each}
       </div>
+      {#if mcpAuditTotalPages > 1}
+        <div class="mcp-pagination">
+          <button class="btn btn-sm" disabled={mcpAuditPage === 0} onclick={() => { mcpAuditPage--; }}>&larr; Prev</button>
+          <span style="font-size:.78rem;color:var(--text-secondary)">Page {mcpAuditPage + 1} of {mcpAuditTotalPages}</span>
+          <button class="btn btn-sm" disabled={mcpAuditPage >= mcpAuditTotalPages - 1} onclick={() => { mcpAuditPage++; }}>Next &rarr;</button>
+        </div>
+      {/if}
     {/if}
   </div>
 {/snippet}
