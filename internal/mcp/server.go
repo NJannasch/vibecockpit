@@ -544,14 +544,24 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			return
 		}
 		if len(t.Sessions) > 0 {
-			currentCost := s.computeSessionCost(t.Sessions)
-			if t.CostAtStart > 0 {
-				t.Cost = currentCost - t.CostAtStart
+			if t.CostAtEnd > 0 {
+				t.Cost = t.CostAtEnd - t.CostAtStart
 				if t.Cost < 0 {
 					t.Cost = 0
 				}
-			} else if t.Cost == 0 {
-				t.Cost = currentCost
+			} else {
+				isActive := t.Status == "in-progress" || t.Status == "claimed"
+				if isActive {
+					currentCost := s.computeSessionCost(t.Sessions)
+					if t.CostAtStart > 0 {
+						t.Cost = currentCost - t.CostAtStart
+						if t.Cost < 0 {
+							t.Cost = 0
+						}
+					} else if t.Cost == 0 {
+						t.Cost = currentCost
+					}
+				}
 			}
 		}
 		result = t
@@ -623,8 +633,14 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 				t.LinkSession(sid, by)
 			}
 		}
-		if args.Status == "in-progress" && t.CostAtStart == 0 && len(t.Sessions) > 0 {
-			t.CostAtStart = s.computeSessionCost(t.Sessions)
+		if args.Status == "in-progress" && len(t.Sessions) > 0 {
+			if t.CostAtEnd > 0 {
+				t.CostAtStart = s.computeSessionCost(t.Sessions)
+				t.CostAtEnd = 0
+				t.Cost = 0
+			} else if t.CostAtStart == 0 {
+				t.CostAtStart = s.computeSessionCost(t.Sessions)
+			}
 		}
 		if (args.Status == "done" || args.Status == "review") && len(t.Sessions) > 0 {
 			t.CostAtEnd = s.computeSessionCost(t.Sessions)
