@@ -40,6 +40,7 @@ type server struct {
 	cachedAt      time.Time
 	cacheTTL      time.Duration
 	secretScanner *scanner.Scanner
+	sessionCache  *scanCache
 
 	inventoryCache    *inventory.Inventory
 	inventoryCachedAt time.Time
@@ -104,6 +105,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 		inventoryTTL: 60 * time.Second,
 		demoMode:     isDemo,
 		auditLog:     audit.NewLogger(),
+		sessionCache: newScanCache(providers),
 		secretScanner: func() *scanner.Scanner {
 			if cfg.EnableScanner {
 				return scanner.New(providers, scanner.Config{
@@ -282,18 +284,11 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var all []provider.Session
-	for _, p := range s.providers {
-		sessions, err := p.ScanSessions(context.Background())
-		if err != nil {
-			continue
-		}
-		all = append(all, sessions...)
-	}
+	all := s.sessionCache.getSessions(forceRefresh)
 
 	out := make([]apiSession, 0, len(all))
 	for _, sess := range all {
-		estCost := costs.EstimateCost(sess.Model, sess.Tokens)
+		estCost := sess.EstCostUSD
 		as := apiSession{
 			ID:           sess.ID,
 			Provider:     sess.Provider,
@@ -665,17 +660,7 @@ func (s *server) handleCosts(w http.ResponseWriter, r *http.Request) {
 	}
 	since := time.Now().AddDate(0, 0, -days)
 
-	var all []provider.Session
-	for _, p := range s.providers {
-		sessions, err := p.ScanSessions(context.Background())
-		if err != nil {
-			continue
-		}
-		for i := range sessions {
-			sessions[i].EstCostUSD = costs.EstimateCost(sessions[i].Model, sessions[i].Tokens)
-		}
-		all = append(all, sessions...)
-	}
+	all := s.sessionCache.getSessions(false)
 
 	summary := costs.Aggregate(all, since)
 	w.Header().Set("Content-Type", "application/json")
@@ -695,14 +680,7 @@ func (s *server) handleInventory(w http.ResponseWriter, r *http.Request) {
 	if s.demoMode {
 		inv = inventory.Demo()
 	} else {
-		var all []provider.Session
-		for _, p := range s.providers {
-			sessions, err := p.ScanSessions(context.Background())
-			if err != nil {
-				continue
-			}
-			all = append(all, sessions...)
-		}
+		all := s.sessionCache.getSessions(false)
 		inv = inventory.Scan(all, s.cfg.NewProjectDir)
 	}
 
@@ -780,14 +758,7 @@ func (s *server) handleInventoryFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
-	var all []provider.Session
-	for _, p := range s.providers {
-		sessions, err := p.ScanSessions(context.Background())
-		if err != nil {
-			continue
-		}
-		all = append(all, sessions...)
-	}
+	all := s.sessionCache.getSessions(false)
 
 	var inv *inventory.Inventory
 	if s.inventoryCache != nil && time.Since(s.inventoryCachedAt) < s.inventoryTTL {
@@ -854,36 +825,25 @@ func (s *server) discoverBoards() ([]*board.Board, error) {
 }
 
 func (s *server) getSessionCostMap() map[string]float64 {
-	if s.cachedResult != nil && time.Since(s.cachedAt) < s.cacheTTL {
-		m := make(map[string]float64, len(s.cachedResult))
-		for _, sess := range s.cachedResult {
-			if sess.EstCostUSD > 0 {
-				m[sess.ID] = sess.EstCostUSD
-			}
-		}
-		return m
-	}
-	m := make(map[string]float64)
-	for _, p := range s.providers {
-		sessions, err := p.ScanSessions(context.Background())
-		if err != nil {
-			continue
-		}
-		for _, sess := range sessions {
-			c := costs.EstimateCost(sess.Model, sess.Tokens)
-			if c > 0 {
-				m[sess.ID] = c
-			}
+	all := s.sessionCache.getSessions(false)
+	m := make(map[string]float64, len(all))
+	for _, sess := range all {
+		if sess.EstCostUSD > 0 {
+			m[sess.ID] = sess.EstCostUSD
 		}
 	}
 	return m
 }
 
 func (s *server) computeTaskSessionCost(sessionIDs []string) float64 {
-	costMap := s.getSessionCostMap()
+	all := s.sessionCache.getSessions(false)
 	var total float64
-	for _, sid := range sessionIDs {
-		total += costMap[sid]
+	for _, sess := range all {
+		for _, sid := range sessionIDs {
+			if sess.ID == sid {
+				total += sess.EstCostUSD
+			}
+		}
 	}
 	return total
 }
