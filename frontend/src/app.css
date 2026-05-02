@@ -74,10 +74,18 @@ code{
 }
 .sidebar-btn:hover{background:var(--surface-hover);color:var(--text)}
 .sidebar-btn.active{background:var(--primary-glow);color:var(--primary);font-weight:600}
+.sidebar-svg{width:18px;height:18px;flex-shrink:0}
 .sidebar-icon{width:1.1rem;text-align:center;font-size:.95rem;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center}
-.sidebar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.sidebar-count{font-size:.65rem;font-weight:600;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.05rem .35rem;margin-left:auto}
+.sidebar-count-active{color:var(--success);border-color:var(--success)}
 .sidebar-bottom{padding:.5rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.1rem}
 .sidebar-btn-sm{font-size:.78rem;padding:.35rem .7rem}
+.sidebar-row-inline{display:flex;gap:.3rem;padding:.2rem .7rem}
+.sidebar-btn-icon{background:none;border:none;cursor:pointer;color:var(--text-secondary);
+  padding:.4rem;border-radius:var(--radius-sm);font-size:1rem;display:inline-flex;
+  align-items:center;justify-content:center;transition:all .15s;text-decoration:none}
+.sidebar-btn-icon:hover{background:var(--surface-hover);color:var(--text)}
 .sidebar-version{padding:.3rem .7rem;text-align:center}
 .version{font-size:.7rem;font-weight:500;color:var(--text-secondary);background:var(--surface-2,rgba(0,0,0,.04));padding:.15rem .5rem;border-radius:999px;letter-spacing:.02em;text-decoration:none}
 .version-update{color:#fff;background:var(--primary);cursor:pointer}
@@ -85,6 +93,17 @@ code{
 
 /* ─── App layout ─── */
 .app-content{margin-left:200px;min-height:100vh}
+
+/* ─── Page bar (consistent header across pages) ─── */
+.page-bar{
+  padding:.8rem 2rem;border-bottom:1px solid var(--border);
+  background:var(--surface);display:flex;align-items:center;gap:1rem;
+}
+.page-bar-title{font-size:1rem;font-weight:700;color:var(--text);margin:0}
+.page-bar-subtitle{font-size:.82rem;color:var(--text-muted)}
+.page-bar-spacer{flex:1}
+.page-bar-actions{display:flex;align-items:center;gap:.5rem}
+
 
 /* ─── Buttons ─── */
 .btn{

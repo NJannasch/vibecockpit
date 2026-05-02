@@ -544,11 +544,13 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			return
 		}
 		if len(t.Sessions) > 0 {
-			if t.CostAtEnd > 0 {
+			if t.CostAtEnd > 0 && t.CostAtStart > 0 {
 				t.Cost = t.CostAtEnd - t.CostAtStart
 				if t.Cost < 0 {
 					t.Cost = 0
 				}
+			} else if t.CostAtEnd > 0 {
+				// costAtStart missing (legacy) — can't compute delta
 			} else {
 				isActive := t.Status == "in-progress" || t.Status == "claimed"
 				if isActive {

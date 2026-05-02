@@ -280,7 +280,9 @@
       </p>
       <div class="board-info-tip">
         <strong>MCP-powered</strong> — AI agents can create tasks, claim work, and report progress via MCP.
-        Sessions are auto-linked to tasks, so you see cost per feature. Enable MCP in Settings to get started.
+        Sessions are auto-linked to tasks, so you see cost per feature.
+        <br/>Add this to your project's <code>.mcp.json</code>:
+        <pre class="mcp-inline-snippet">{`{"mcpServers":{"vibecockpit":{"command":"vibecockpit","args":["--mcp"]}}}`}</pre>
       </div>
     </div>
   {:else}
@@ -291,7 +293,7 @@
           <span class="board-sidebar-title">Boards</span>
           <button class="btn btn-sm" onclick={() => { showCreateBoard = true; }}>+</button>
         </div>
-        {#each boards as b}
+        {#each boards as b (b.name)}
           {@const isActive = activeBoard?.name === b.name}
           {@const activeTasks = (b.tasks || []).filter(t => t.status !== "archived")}
           {@const workingCount = (b.tasks || []).filter(t => t.status === "in-progress").length}
@@ -338,7 +340,7 @@
             </div>
           </div>
     <div class="kanban">
-      {#each columns() as col}
+      {#each columns() as col (col)}
         {@const tasks = tasksByColumn(col)}
         <div
           class="kanban-col"
@@ -420,7 +422,7 @@
         </button>
         {#if showArchived}
           <div class="archived-list">
-            {#each archivedTasks() as task}
+            {#each archivedTasks() as task (task.id)}
               <div class="archived-row">
                 <span class="archived-title">{task.title}</span>
                 <span class="archived-id">{task.id}</span>
@@ -461,7 +463,7 @@
       <div class="field" style="flex:1">
         <label for="edit-status">Status</label>
         <select id="edit-status" value={selectedTask.status} onchange={(e) => updateField(selectedTask.id, "status", e.target.value)}>
-          {#each columns() as col}
+          {#each columns() as col (col)}
             <option value={col}>{columnLabels[col] || col}</option>
           {/each}
         </select>
@@ -481,7 +483,7 @@
         <label for="edit-tool">Tool</label>
         <select id="edit-tool" value={selectedTask.tool || ""} onchange={(e) => updateField(selectedTask.id, "tool", e.target.value)}>
           <option value="">Board default</option>
-          {#each availableProviders as p}
+          {#each availableProviders as p (p)}
             <option value={p}>{p}</option>
           {/each}
         </select>
@@ -490,7 +492,7 @@
         <label for="edit-model">Model</label>
         <select id="edit-model" value={selectedTask.model || ""} onchange={(e) => updateField(selectedTask.id, "model", e.target.value)}>
           <option value="">Board default</option>
-          {#each modelsForTool(selectedTask.tool || activeBoard?.defaults?.tool) as m}
+          {#each modelsForTool(selectedTask.tool || activeBoard?.defaults?.tool) as m (m)}
             <option value={m}>{m}</option>
           {/each}
         </select>
@@ -506,7 +508,7 @@
       <div class="field">
         <label for="acceptance-criteria">Acceptance criteria</label>
         <ul id="acceptance-criteria" class="task-detail-accept">
-          {#each selectedTask.acceptance as a}
+          {#each selectedTask.acceptance as a, i (i)}
             <li>{a}</li>
           {/each}
         </ul>
@@ -533,7 +535,7 @@
       {#if selectedTask.sessions?.length}
         <div class="task-meta-row">
           <span class="task-meta-label">Sessions</span>
-          <span class="task-sessions">{#each selectedTask.sessions as sid}<code class="task-session-id">{sid}</code>{/each}</span>
+          <span class="task-sessions">{#each selectedTask.sessions as sid (sid)}<code class="task-session-id">{sid}</code>{/each}</span>
         </div>
       {/if}
       {#if selectedTask.cost > 0}
@@ -550,7 +552,7 @@
     <div class="task-history">
       <span class="task-history-title">History</span>
       <div class="task-history-list">
-        {#each selectedTask.history as h}
+        {#each selectedTask.history as h, i (i)}
           <div class="task-history-row">
             <span class="task-history-time" title={h.timestamp}>{relativeTime(h.timestamp)}</span>
             <span class="task-history-action">{h.action}</span>
@@ -567,7 +569,7 @@
       {#if boards.length > 1}
         <select class="task-move-select" onchange={(e) => { if (e.target.value) moveToBoard(selectedTask.id, e.target.value); e.target.value = ""; }}>
           <option value="">Move to board...</option>
-          {#each boards.filter(b => b.name !== activeBoard?.name) as b}
+          {#each boards.filter(b => b.name !== activeBoard?.name) as b (b.name)}
             <option value={b.name}>{b.name}</option>
           {/each}
         </select>
@@ -609,7 +611,7 @@
           }
         }}>
           <option value="">Select a project...</option>
-          {#each knownProjects as p}
+          {#each knownProjects as p (p.path)}
             <option value={p.path}>{p.name} — {p.path}</option>
           {/each}
           <option value="__custom__">Enter custom path...</option>
@@ -646,7 +648,7 @@
         <label for="task-tool">Tool</label>
         <select id="task-tool" bind:value={newTaskTool}>
           <option value="">Board default</option>
-          {#each availableProviders as p}
+          {#each availableProviders as p (p)}
             <option value={p}>{p}</option>
           {/each}
         </select>
@@ -655,7 +657,7 @@
         <label for="task-model">Model</label>
         <select id="task-model" bind:value={newTaskModel}>
           <option value="">Board default</option>
-          {#each modelsForTool(newTaskTool || activeBoard?.defaults?.tool) as m}
+          {#each modelsForTool(newTaskTool || activeBoard?.defaults?.tool) as m (m)}
             <option value={m}>{m}</option>
           {/each}
         </select>
@@ -689,6 +691,8 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); line-height: 1.5; }
   .board-info-tip strong { color: var(--text-secondary); }
   .board-info-tip code { font-size: .72rem; background: var(--bg); padding: .1rem .3rem; border-radius: 3px; }
+  .mcp-inline-snippet { font-size: .7rem; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 3px; padding: .3rem .5rem; margin: .3rem 0 0; overflow-x: auto; white-space: pre; }
 
   /* Layout: sidebar + main */
   .board-layout { display: flex; gap: 1rem; min-height: 500px; }

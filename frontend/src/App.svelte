@@ -20,7 +20,6 @@
   import Dashboard from "./components/Dashboard.svelte";
   import CostsDashboard from "./components/CostsDashboard.svelte";
   import ToolInventory from "./components/ToolInventory.svelte";
-  import AdoptionTimeline from "./components/AdoptionTimeline.svelte";
   import BoardView from "./components/BoardView.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
@@ -59,6 +58,9 @@
   let sortByVal = $state("modified");
   let groupByVal = $state("none");
   let activeFiltersVal = $state({});
+
+  let activeSessionCount = $derived(sessionList.filter(s => s.isActive).length);
+  let totalEstCost = $derived(sessionList.reduce((sum, s) => sum + (s.estCostUsd || 0), 0));
   let versionInfo = $state(null);
   let showPrivacyNotice = $state(!localStorage.getItem("vibecockpit-privacy-ack"));
   let mcpAuditLog = $state([]);
@@ -693,41 +695,49 @@
   </div>
   <nav class="sidebar-nav">
     <button class="sidebar-btn" class:active={page === "dashboard"} onclick={() => navigateTo("dashboard")}>
-      <span class="sidebar-icon">&#9670;</span><span class="sidebar-label">Dashboard</span>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="sidebar-label">Dashboard</span>
     </button>
     <button class="sidebar-btn" class:active={page === "planner"} onclick={() => navigateTo("planner")}>
-      <span class="sidebar-icon">&#9635;</span><span class="sidebar-label">Planner</span>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+      <span class="sidebar-label">Planner</span>
     </button>
     <button class="sidebar-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>
-      <span class="sidebar-icon">&#9707;</span><span class="sidebar-label">Sessions</span>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      <span class="sidebar-label">Sessions</span>
+      {#if activeSessionCount > 0}<span class="sidebar-count sidebar-count-active">{activeSessionCount}</span>{/if}
     </button>
     <button class="sidebar-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>
-      <span class="sidebar-icon">&#9733;</span><span class="sidebar-label">Costs</span>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      <span class="sidebar-label">Costs</span>
+      {#if totalEstCost > 0}<span class="sidebar-count">~${totalEstCost >= 1000 ? (totalEstCost/1000).toFixed(1) + "k" : totalEstCost.toFixed(0)}</span>{/if}
     </button>
     <button class="sidebar-btn" class:active={page === "inventory"} onclick={() => navigateTo("inventory")}>
-      <span class="sidebar-icon">&#9776;</span><span class="sidebar-label">Inventory</span>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      <span class="sidebar-label">Inventory</span>
     </button>
     <button class="sidebar-btn" class:active={page === "settings"} onclick={() => navigateTo("settings")}>
-      <span class="sidebar-icon">&#9881;</span><span class="sidebar-label">Settings</span>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span class="sidebar-label">Settings</span>
     </button>
   </nav>
   <div class="sidebar-bottom">
-    <button class="sidebar-btn sidebar-btn-sm" onclick={refresh} disabled={scanning} title={lastScanned ? "Last scan: " + relativeTime(lastScanned.toISOString()) : ""}>
-      <span class="sidebar-icon">&#8635;</span><span class="sidebar-label">{scanning ? "Scanning..." : "Refresh"}</span>
+    <button class="sidebar-btn sidebar-btn-sm" onclick={refresh} disabled={scanning} title={lastScanned ? "Last scan: " + relativeTime(lastScanned.toISOString()) : "Scan for sessions"}>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+      <span class="sidebar-label">{scanning ? "Scanning..." : "Refresh"}</span>
     </button>
-    <button class="sidebar-btn sidebar-btn-sm" onclick={showNewProject}>
-      <span class="sidebar-icon">+</span><span class="sidebar-label">New Project</span>
+    <button class="sidebar-btn sidebar-btn-sm" onclick={showNewProject} title="Start a new coding session">
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span class="sidebar-label">New Project</span>
     </button>
-    <button class="sidebar-btn sidebar-btn-sm" onclick={toggleTheme} title="Toggle theme">
-      <span class="sidebar-icon">{themeIcon}</span><span class="sidebar-label">Theme</span>
-    </button>
-    <a href="https://github.com/njannasch/vibecockpit" target="_blank" class="sidebar-btn sidebar-btn-sm" title="GitHub" aria-label="GitHub">
-      <span class="sidebar-icon">
+    <div class="sidebar-row-inline">
+      <button class="sidebar-btn-icon" onclick={toggleTheme} title="Toggle theme">{themeIcon}</button>
+      <a href="https://github.com/njannasch/vibecockpit" target="_blank" class="sidebar-btn-icon" title="GitHub" aria-label="GitHub">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.111.82-.26.82-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.762-1.605-2.665-.305-5.467-1.334-5.467-5.93 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0112 5.803c1.02.005 2.045.138 3.003.404 2.291-1.552 3.297-1.23 3.297-1.23.654 1.652.243 2.873.119 3.176.77.84 1.235 1.911 1.235 3.221 0 4.61-2.807 5.624-5.479 5.92.43.372.823 1.102.823 2.222v3.293c0 .319.218.694.825.576C20.565 21.796 24 17.298 24 12c0-6.63-5.37-12-12-12z"/>
         </svg>
-      </span><span class="sidebar-label">GitHub</span>
-    </a>
+      </a>
+    </div>
     {#if versionInfo?.current}
       <div class="sidebar-version">
         {#if versionInfo.updateAvailable}
@@ -758,16 +768,18 @@
     </div>
   </main>
 {:else if page === "dashboard"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Dashboard</h1>
+    <span class="page-bar-subtitle">{sessionList.length} sessions · {activeSessionCount > 0 ? `${activeSessionCount} active` : "none active"}</span>
+  </div>
   <main>
     <Dashboard
       sessions={sessionList}
       onnavigate={navigateTo}
       onlaunch={(id, prov) => launch(id, prov)}
       onfilterby={filterByProvider}
+      mcpEnabled={configData.enableMcp || false}
     />
-    <div style="max-width:900px;margin:0 auto;padding:0 1rem 2rem">
-      <AdoptionTimeline />
-    </div>
   </main>
 {:else if page === "sessions"}
 <!-- Search Bar -->
@@ -818,7 +830,7 @@
     {/if}
     {#if chipData.providers.length > 1}
       <div class="chip-sep"></div>
-      {#each chipData.providers as p}
+      {#each chipData.providers as p (p)}
         {@const cnt = sessionList.filter((s) => s.provider === p).length}
         <button
           class="chip chip-provider"
@@ -831,7 +843,7 @@
     {/if}
     {#if chipData.models.length > 1}
       <div class="chip-sep"></div>
-      {#each chipData.models as m}
+      {#each chipData.models as m (m)}
         <button class="chip chip-model" class:on={activeFiltersVal.model === m} onclick={() => toggleChip("model", m)}>
           {m}
         </button>
@@ -848,27 +860,27 @@
     <div class="onboarding">
       <div class="onboarding-icon">&#9670;</div>
       <h2>Welcome to VibeCockpit</h2>
-      <p>Your AI coding session dashboard. Browse, search, and resume all your coding sessions in one place.</p>
+      <p>Your AI coding control plane. VibeCockpit auto-detects sessions from Claude Code, Codex, Copilot, Gemini, OpenCode, and more.</p>
       <div class="steps">
         <div class="step">
           <span class="step-num">1</span>
           <div>
-            <h4>Install Claude Code</h4>
-            <p><code>npm install -g @anthropic-ai/claude-code</code></p>
+            <h4>Use any AI coding tool</h4>
+            <p>Claude Code, Codex CLI, Copilot, Gemini CLI, OpenCode, Cursor</p>
           </div>
         </div>
         <div class="step">
           <span class="step-num">2</span>
           <div>
-            <h4>Start coding</h4>
-            <p>Run <code>claude</code> in any project directory</p>
+            <h4>Sessions appear here</h4>
+            <p>VibeCockpit scans your tool directories automatically</p>
           </div>
         </div>
         <div class="step">
           <span class="step-num">3</span>
           <div>
-            <h4>Come back here</h4>
-            <p>Your sessions will appear automatically</p>
+            <h4>Connect agents via MCP</h4>
+            <p>Add <code>.mcp.json</code> to your project and agents can track tasks and costs</p>
           </div>
         </div>
       </div>
@@ -883,7 +895,7 @@
     <!-- Tree View -->
     <div class="tree">
       {#snippet treeNodes(node, prefix)}
-        {#each Object.keys(node.children).sort() as name}
+        {#each Object.keys(node.children).sort() as name (name)}
           {@const child = node.children[name]}
           {@const allSessions = collectSessions(child)}
           {@const providers = [...new Set(allSessions.map((s) => s.provider))]}
@@ -897,7 +909,7 @@
               <span class="tree-dir-name">{isUnlinked ? "Unlinked sessions" : name}</span>
               <span class="tree-dir-count">{allSessions.length}</span>
               <span class="tree-dir-providers">
-                {#each providers as p}
+                {#each providers as p (p)}
                   <span
                     class="badge"
                     style="background:{providerColors[p] || 'var(--primary)'}18;color:{providerColors[p] ||
@@ -910,7 +922,7 @@
             </button>
             <div class="tree-children">
               {@render treeNodes(child, nodeId)}
-              {#each child.sessions.sort((a, b) => new Date(b.modified) - new Date(a.modified)) as s}
+              {#each child.sessions.sort((a, b) => new Date(b.modified) - new Date(a.modified)) as s, si (s.id + '-' + si)}
                 {@const summary = s.summary || s.firstPrompt || "untitled"}
                 {@const color = providerColors[s.provider] || "var(--text-secondary)"}
                 <button class="tree-session" onclick={() => launch(s.id, s.provider)}>
@@ -927,7 +939,7 @@
     </div>
   {:else if groupedSessions}
     <!-- Grouped List View -->
-    {#each groupedSessions as { key, items }}
+    {#each groupedSessions as { key, items } (key)}
       <div class="group" class:collapsed={collapsedGroups.has(key)}>
         <button class="group-header" onclick={() => toggleGroup(key)}>
           <span class="group-chevron">&#9660;</span>
@@ -937,7 +949,7 @@
           <span class="group-count">{items.length}</span>
         </button>
         <div class="group-sessions sessions">
-          {#each items as s}
+          {#each items as s, si (s.id + '-' + si)}
             {@const summary = s.summary || s.firstPrompt || ""}
             {@const displaySummary = summary.length > 120 ? summary.slice(0, 117) + "..." : summary}
             {@const model = shortModel(s.model)}
@@ -988,7 +1000,7 @@
   {:else}
     <!-- Flat List View -->
     <div class="sessions">
-      {#each filterData.filtered as s}
+      {#each filterData.filtered as s, si (s.id + '-' + si)}
         {@const summary = s.summary || s.firstPrompt || ""}
         {@const displaySummary = summary.length > 120 ? summary.slice(0, 117) + "..." : summary}
         {@const model = shortModel(s.model)}
@@ -1041,14 +1053,26 @@
   </div>
 </main>
 {:else if page === "planner"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Planner</h1>
+    <span class="page-bar-subtitle">Plan and track agentic tasks</span>
+  </div>
   <main>
     <BoardView sessions={sessionList} />
   </main>
 {:else if page === "costs"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Costs</h1>
+    <span class="page-bar-subtitle">~${totalEstCost >= 1000 ? (totalEstCost/1000).toFixed(1) + "k" : totalEstCost.toFixed(0)} estimated across all sessions</span>
+  </div>
   <main>
     <CostsDashboard sessions={sessionList} />
   </main>
 {:else if page === "inventory"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Inventory</h1>
+    <span class="page-bar-subtitle">Tools, extensions, MCP servers, configs</span>
+  </div>
   <main>
     <ToolInventory />
     {#if configData.enableScanner}
@@ -1056,13 +1080,17 @@
     {/if}
   </main>
 {:else if page === "settings"}
-  <main>
-    <div class="settings-tabs">
+  <div class="page-bar">
+    <h1 class="page-bar-title">Settings</h1>
+    <span class="page-bar-spacer"></span>
+    <div class="page-bar-actions">
       <button class="settings-tab" class:active={settingsTab === "general"} onclick={() => { settingsTab = "general"; }}>General</button>
       {#if configData.enableMcp}
         <button class="settings-tab" class:active={settingsTab === "mcp"} onclick={() => { settingsTab = "mcp"; loadMCPAudit(); }}>MCP</button>
       {/if}
     </div>
+  </div>
+  <main>
     {#if settingsTab === "general"}
       {@render settingsPage()}
     {:else if settingsTab === "mcp"}
@@ -1112,7 +1140,7 @@
     <!-- Tool breakdown -->
     {#if Object.keys(toolCounts).length > 0}
     <div class="mcp-tool-bar">
-      {#each Object.entries(toolCounts).sort((a, b) => b[1] - a[1]) as [tool, count]}
+      {#each Object.entries(toolCounts).sort((a, b) => b[1] - a[1]) as [tool, count] (tool)}
         <div class="mcp-tool-chip" style="--chip-color:{toolColors[tool] || '#888'}">
           <span class="mcp-tool-chip-dot"></span>
           <span>{tool}</span>
@@ -1137,7 +1165,7 @@
           <span class="mcp-col-results">Results</span>
           <span class="mcp-col-hash">Hash</span>
         </div>
-        {#each mcpAuditLog as entry, i}
+        {#each mcpAuditLog as entry, i (i)}
           <button class="mcp-audit-row mcp-audit-data" class:mcp-row-expanded={mcpAuditExpanded.has(i)} onclick={() => toggleAuditRow(i)}>
             <span class="mcp-col-time" title={entry.timestamp}>{relativeTime(entry.timestamp)}</span>
             <span class="mcp-col-tool">
@@ -1249,7 +1277,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each scanStatus.findings as f}
+            {#each scanStatus.findings as f, i (i)}
               <tr style="border-bottom:1px solid var(--border)">
                 <td style="padding:.4rem .8rem"><span style="background:var(--danger-dim);color:var(--danger);padding:.1rem .4rem;border-radius:4px;font-size:.72rem;font-weight:500">{f.ruleId}</span></td>
                 <td style="padding:.4rem .8rem;font-size:.78rem">{f.provider}</td>
@@ -1314,7 +1342,7 @@
           <span class="field-hint">Used when launching sessions from the web UI</span>
         </div>
         <select value={configData.terminal || "default"} onchange={(e) => save(c => ({...c, terminal: e.target.value}))}>
-          {#each configData.availableTerminals || ["default"] as t}
+          {#each configData.availableTerminals || ["default"] as t (t)}
             <option value={t}>{t}{t === "default" ? " (auto-detect)" : t === "custom" ? " (custom command)" : ""}</option>
           {/each}
         </select>
@@ -1333,7 +1361,7 @@
       <h3 class="settings-section">Providers</h3>
       <p style="color:var(--text-muted);font-size:.85rem;margin:0 0 .5rem">Choose which coding tools to scan for sessions. Disabled providers won't appear in the session list.</p>
       <div class="provider-toggles">
-        {#each configData.allProviders || [] as p}
+        {#each configData.allProviders || [] as p (p.id)}
           {@const disabled = (configData.disabledProviders || []).includes(p.id)}
           <label class="provider-toggle" class:disabled>
             <input type="checkbox" checked={!disabled} onchange={() => {
@@ -1365,7 +1393,7 @@
           <span>Provider binary paths</span>
           <span class="field-hint">Override if a tool isn't in your system PATH</span>
         </div>
-        {#each [...new Set(sessionList.map(s => s.provider))] as p}
+        {#each [...new Set(sessionList.map(s => s.provider))] as p (p)}
           <div class="settings-path-row">
             <label class="settings-path-label" for="provider-path-{p}">{p}</label>
             <input id="provider-path-{p}" type="text" value={configData.providerPaths?.[p] || ""}
@@ -1386,7 +1414,7 @@
     <div class="settings-card">
       <h3 class="settings-section">Remote Sources</h3>
       <p class="field-hint" style="margin-bottom:.8rem">Scan AI coding sessions on remote machines via SSH. Requires restart after changes.</p>
-      {#each configData.remoteSources || [] as src, i}
+      {#each configData.remoteSources || [] as src, i (i)}
         <div class="settings-remote-row">
           <input type="text" value={src.name || ""} placeholder="name" style="width:6rem"
             onchange={(e) => updateRemoteSource(i, "name", e.target.value)} />
@@ -1500,7 +1528,7 @@
       <div class="field" style="flex:1">
         <label for="new-project-tool">Tool</label>
         <select id="new-project-tool" bind:value={newProjectTool}>
-          {#each availableTools as t}
+          {#each availableTools as t (t)}
             <option value={t}>{providerLabels[t] || t}</option>
           {/each}
         </select>
@@ -1509,7 +1537,7 @@
         <label for="new-project-model">Model (optional)</label>
         <select id="new-project-model" bind:value={newProjectModel}>
           <option value="">Default</option>
-          {#each configData.models || [] as m}
+          {#each configData.models || [] as m (m)}
             <option value={m}>{m}</option>
           {/each}
         </select>
@@ -1530,7 +1558,7 @@
     <div class="field">
       <label for="settings-terminal">Terminal emulator</label>
       <select id="settings-terminal" bind:value={settingsTerminal}>
-        {#each availableTerminals as t}
+        {#each availableTerminals as t (t)}
           <option value={t}>{t}{t === "default" ? " (auto-detect)" : t === "custom" ? " (custom command)" : ""}</option>
         {/each}
       </select>
@@ -1543,7 +1571,7 @@
     <div class="field">
       <span style="display:block;font-size:.82rem;color:var(--text-secondary);margin-bottom:.3rem">Provider binary paths</span>
       <div class="field-hint" style="margin-bottom:.4rem">Override if a tool isn't in your PATH (e.g. installed via nvm).</div>
-      {#each settingsProviders as p}
+      {#each settingsProviders as p (p)}
         <div style="display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center">
           <label for="settings-provider-path-{p}" style="width:5rem;font-size:.8rem;font-weight:500">{p}</label>
           <input
@@ -1572,7 +1600,7 @@
     <div class="field">
       <label for="resume-model">Model</label>
       <select id="resume-model" bind:value={resumeModel}>
-        {#each resumeModelList as m}
+        {#each resumeModelList as m (m)}
           <option value={m}>{m}{pendingResume && m === pendingResume.current ? " (current)" : ""}</option>
         {/each}
       </select>
@@ -1608,7 +1636,7 @@
     <h2>Welcome to VibeCockpit</h2>
     <p>Which AI coding tools would you like to scan? You can change this anytime in Settings.</p>
     <div class="provider-toggles">
-      {#each configData.allProviders || [] as p}
+      {#each configData.allProviders || [] as p (p.id)}
         {@const off = wizardDisabled.includes(p.id)}
         <label class="provider-toggle" class:disabled={off}>
           <input type="checkbox" checked={!off} onchange={() => wizardToggle(p.id)} />

@@ -300,7 +300,7 @@
         <span class="sensitive-hint">These files may contain secrets — ensure they are in <code>.gitignore</code></span>
       </summary>
       <div class="sensitive-list">
-        {#each inventory.sensitiveFiles as f}
+        {#each inventory.sensitiveFiles as f, i (i)}
           <div class="sensitive-row">
             <code class="sensitive-name">{f.name}</code>
             <span class="sensitive-project">{f.projectName}</span>
@@ -313,7 +313,7 @@
 
   <!-- Tabs -->
   <div class="inv-tabs">
-    {#each tabs as t}
+    {#each tabs as t (t.id)}
       <button class="inv-tab" class:active={tab === t.id} onclick={() => tab = t.id}>
         {t.label}
         {#if t.count > 0}<span class="tab-count">{t.count}</span>{/if}
@@ -327,7 +327,7 @@
     <!-- OVERVIEW -->
     {#if tab === "overview"}
       <div class="tool-grid">
-        {#each installedTools as tool}
+        {#each installedTools as tool (tool.id)}
           <button class="tool-card" class:expanded={expandedTools.has(tool.id)} onclick={() => toggleTool(tool.id)}>
             <div class="tool-top">
               <span class="tool-dot" style="background:{toolColor(tool)}"></span>
@@ -346,7 +346,7 @@
             {/if}
           </button>
         {/each}
-        {#each notInstalledTools as tool}
+        {#each notInstalledTools as tool (tool.id)}
           <div class="tool-card dimmed">
             <div class="tool-top">
               <span class="tool-dot" style="background:var(--text-tertiary, var(--text-secondary))"></span>
@@ -364,7 +364,7 @@
           <table class="inv-table">
             <thead><tr><th>Model</th><th>Provider</th><th>Sessions</th><th>Last used</th></tr></thead>
             <tbody>
-              {#each inventory.models as m}
+              {#each inventory.models as m (m.model)}
                 <tr>
                   <td><code>{shortModel(m.model)}</code></td>
                   <td><span class="chip" style="--c:{providerColors[m.provider] || 'var(--primary)'}">{m.provider}</span></td>
@@ -382,7 +382,7 @@
       {#if extCount === 0}
         <div class="empty">No AI-related IDE extensions detected. Install extensions like GitHub Copilot, Continue, or Cline in VS Code or Cursor.</div>
       {:else}
-        {#each Object.entries(extByIDE) as [ide, exts]}
+        {#each Object.entries(extByIDE) as [ide, exts] (ide)}
           <div class="ext-group">
             <div class="ext-ide">
               <span class="ext-ide-dot" style="background:{sourceColors[exts[0]?.ideId] || 'var(--primary)'}"></span>
@@ -390,7 +390,7 @@
               <span class="ext-ide-count">{exts.length}</span>
             </div>
             <div class="ext-list">
-              {#each exts as ext}
+              {#each exts as ext (ext.id)}
                 <div class="ext-row">
                   <span class="ext-name">{ext.name}</span>
                   <code class="ext-id">{ext.id}</code>
@@ -411,7 +411,7 @@
         <div class="empty">No MCP servers detected. Configure servers in your tool settings or project <code>.mcp.json</code>.</div>
       {:else}
         <div class="mcp-list">
-          {#each inventory.mcpServers as s}
+          {#each inventory.mcpServers as s (s.name)}
             <div class="mcp-card">
               <div class="mcp-top">
                 <span class="mcp-name">{s.name}</span>
@@ -438,11 +438,11 @@
       {#if instrCount === 0}
         <div class="empty">No instruction files detected. Add a <code>CLAUDE.md</code>, <code>.cursorrules</code>, or other instruction files to your projects.</div>
       {:else}
-        {#each Object.entries(instructionsByProject) as [project, files]}
+        {#each Object.entries(instructionsByProject) as [project, files] (project)}
           <div class="instr-group">
             <div class="instr-project">{project}</div>
             <div class="instr-list">
-              {#each files as f}
+              {#each files as f (f.path)}
                 <button class="instr-row" onclick={() => openFile(f.path)}>
                   <span class="instr-icon" style="background:{fileTypeColor(f.type)}">{fileTypeIcon(f.type)}</span>
                   <span class="instr-name">{fileBasename(f.path)}</span>
@@ -466,7 +466,7 @@
           <table class="inv-table">
             <thead><tr><th>Name</th><th>Type</th><th>Source</th><th></th></tr></thead>
             <tbody>
-              {#each inventory.skills as s}
+              {#each inventory.skills as s (s.name)}
                 <tr>
                   <td><code>/{s.name}</code></td>
                   <td><span class="type-badge {s.type}">{s.type}</span></td>
@@ -484,11 +484,11 @@
       {#if memoryCount === 0}
         <div class="empty">No memory files detected. Claude Code creates these automatically in <code>~/.claude/projects/*/memory/</code>.</div>
       {:else}
-        {#each Object.entries(memoriesByProject) as [project, mems]}
+        {#each Object.entries(memoriesByProject) as [project, mems] (project)}
           <div class="mem-group">
             <div class="mem-project">{project}</div>
             <div class="mem-list">
-              {#each mems as m}
+              {#each mems as m (m.path)}
                 <button class="mem-row" onclick={() => openFile(m.path)}>
                   <span class="mem-type-dot" style="background:{memoryTypeColors[m.memoryType] || 'var(--text-secondary)'}"></span>
                   <span class="mem-name">{m.name}</span>
@@ -519,7 +519,7 @@
         <div class="audit-block">
           <div class="audit-label">Project paths ({inventory.projectPaths.length})</div>
           <div class="audit-paths">
-            {#each inventory.projectPaths as p}
+            {#each inventory.projectPaths as p (p)}
               <div class="audit-path"><code>{homePath(p)}</code></div>
             {/each}
           </div>
@@ -534,7 +534,7 @@
             <button class="audit-pill" class:active={auditFilter === "missed"} onclick={() => auditFilter = "missed"}>Not found ({inventory.scanLog.filter(e => !e.found).length})</button>
           </div>
           <div class="audit-log">
-            {#each filteredScanLog as entry}
+            {#each filteredScanLog as entry, i (i)}
               <div class="audit-entry" class:found={entry.found}>
                 <span class="audit-mark">{entry.found ? "Y" : "."}</span>
                 <span class="audit-type">{entry.type}</span>

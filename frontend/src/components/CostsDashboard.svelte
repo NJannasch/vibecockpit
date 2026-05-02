@@ -511,7 +511,7 @@
     </div>
     <select class="costs-select" bind:value={filterProvider}>
       <option value="all">All providers</option>
-      {#each providers as p}
+      {#each providers as p (p)}
         <option value={p}>{providerLabels[p] || p}</option>
       {/each}
     </select>
@@ -527,18 +527,18 @@
       <div class="heatmap-grid">
         <!-- Day labels -->
         <div class="heatmap-day-labels">
-          {#each dayLabels as label, i}
+          {#each dayLabels as label, i (i)}
             <span class="heatmap-day-label" style="grid-row:{i + 1}">{i % 2 === 1 ? label : ""}</span>
           {/each}
         </div>
         <!-- Cells -->
         <svg viewBox="0 0 {heatmap.weeks.length * 15} 105" class="heatmap-svg">
           <!-- Month labels -->
-          {#each heatmap.months as m}
+          {#each heatmap.months as m, i (i)}
             <text x={m.week * 15} y="-2" font-size="9" fill="var(--text-secondary)" font-family="system-ui,sans-serif">{m.label}</text>
           {/each}
-          {#each heatmap.weeks as week, wi}
-            {#each week as day, di}
+          {#each heatmap.weeks as week, wi (wi)}
+            {#each week as day, di (di)}
               <rect
                 x={wi * 15}
                 y={di * 15}
@@ -557,7 +557,7 @@
       </div>
       <div class="heatmap-legend">
         <span>Less</span>
-        {#each [0, 0.25, 0.5, 0.75, 1] as t}
+        {#each [0, 0.25, 0.5, 0.75, 1] as t (t)}
           <span class="heatmap-legend-box" style="background:rgba(124,58,237,{0.2 + t * 0.8})"></span>
         {/each}
         <span>More</span>
@@ -589,7 +589,7 @@
           <line x1="0" y1="5" x2={chartW} y2="5" stroke="var(--border)" stroke-width=".3" stroke-dasharray="2 4"/>
           <line x1="0" y1={chartH / 2} x2={chartW} y2={chartH / 2} stroke="var(--border)" stroke-width=".3" stroke-dasharray="2 4"/>
           <line x1="0" y1={chartH - 2} x2={chartW} y2={chartH - 2} stroke="var(--border)" stroke-width=".5"/>
-          {#each chart.dates as date, i}
+          {#each chart.dates as date, i (i)}
             {@const bucket = chart.bucketMap[date] || {}}
             {@const entries = Object.entries(bucket)}
             {@const total = entries.reduce((a, [,v]) => a + v, 0)}
@@ -597,7 +597,7 @@
             {@const x = i * barSpacing + 4}
 
             <!-- Stacked segments -->
-            {#each entries as [group, val], gi}
+            {#each entries as [group, val], gi (gi)}
               {@const segH = (val / chart.max) * (chartH - 10)}
               {@const prevH = entries.slice(0, gi).reduce((a, [,v]) => a + (v / chart.max) * (chartH - 10), 0)}
               <rect
@@ -647,7 +647,7 @@
     <!-- Legend -->
     {#if chart.groups.length > 0}
       <div class="chart-legend">
-        {#each chart.groups.slice(0, 10) as group}
+        {#each chart.groups.slice(0, 10) as group (group)}
           <span class="chart-legend-item">
             <span class="chart-legend-dot" style="background:{groupColor(group)}"></span>
             {providerLabels[group] || group}
@@ -664,7 +664,7 @@
         <span class="costs-card-sub">{otherRecs.length} insights based on last 30 days</span>
       </div>
       <div class="recs-list">
-        {#each visibleRecs as rec}
+        {#each visibleRecs as rec, i (i)}
           <div class="rec rec-{rec.type}">
             <span class="rec-icon">
               {#if rec.type === "save"}&#9660;{:else if rec.type === "downsize"}&#9664;{:else}&#9679;{/if}

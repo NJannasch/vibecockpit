@@ -58,7 +58,7 @@
   <div class="field">
     <label>Terminal emulator</label>
     <select bind:value={terminal}>
-      {#each availableTerminals as t}
+      {#each availableTerminals as t (t)}
         <option value={t}>{terminalLabel(t)}</option>
       {/each}
     </select>
@@ -77,7 +77,7 @@
     <div class="field-hint" style="margin-bottom:.4rem">
       Override if a tool isn't in your PATH (e.g. installed via nvm).
     </div>
-    {#each providers as p}
+    {#each providers as p (p)}
       <div style="display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center">
         <label style="width:5rem;font-size:.8rem;font-weight:500">{p}</label>
         <input

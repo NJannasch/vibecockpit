@@ -853,26 +853,17 @@ func (s *server) discoverBoards() ([]*board.Board, error) {
 	return board.Discover(s.cfg.NewProjectDir)
 }
 
-func (s *server) computeTaskSessionCost(sessionIDs []string) float64 {
-	var total float64
-	for _, p := range s.providers {
-		sessions, err := p.ScanSessions(context.Background())
-		if err != nil {
-			continue
-		}
-		for _, sess := range sessions {
-			for _, sid := range sessionIDs {
-				if sess.ID == sid {
-					total += costs.EstimateCost(sess.Model, sess.Tokens)
-				}
+func (s *server) getSessionCostMap() map[string]float64 {
+	if s.cachedResult != nil && time.Since(s.cachedAt) < s.cacheTTL {
+		m := make(map[string]float64, len(s.cachedResult))
+		for _, sess := range s.cachedResult {
+			if sess.EstCostUSD > 0 {
+				m[sess.ID] = sess.EstCostUSD
 			}
 		}
+		return m
 	}
-	return total
-}
-
-func (s *server) enrichBoardCosts(boards []*board.Board) {
-	sessionCosts := make(map[string]float64)
+	m := make(map[string]float64)
 	for _, p := range s.providers {
 		sessions, err := p.ScanSessions(context.Background())
 		if err != nil {
@@ -881,21 +872,37 @@ func (s *server) enrichBoardCosts(boards []*board.Board) {
 		for _, sess := range sessions {
 			c := costs.EstimateCost(sess.Model, sess.Tokens)
 			if c > 0 {
-				sessionCosts[sess.ID] = c
+				m[sess.ID] = c
 			}
 		}
 	}
+	return m
+}
+
+func (s *server) computeTaskSessionCost(sessionIDs []string) float64 {
+	costMap := s.getSessionCostMap()
+	var total float64
+	for _, sid := range sessionIDs {
+		total += costMap[sid]
+	}
+	return total
+}
+
+func (s *server) enrichBoardCosts(boards []*board.Board) {
+	sessionCosts := s.getSessionCostMap()
 	for _, b := range boards {
 		for i := range b.Tasks {
 			t := &b.Tasks[i]
 			if len(t.Sessions) == 0 {
 				continue
 			}
-			if t.CostAtEnd > 0 {
+			if t.CostAtEnd > 0 && t.CostAtStart > 0 {
 				t.Cost = t.CostAtEnd - t.CostAtStart
 				if t.Cost < 0 {
 					t.Cost = 0
 				}
+				continue
+			} else if t.CostAtEnd > 0 {
 				continue
 			}
 			var currentTotal float64

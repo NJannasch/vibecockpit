@@ -46,7 +46,7 @@
   <div class="field">
     <label>Model</label>
     <select bind:value={selectedModel}>
-      {#each allModels as m}
+      {#each allModels as m (m)}
         <option value={m}>
           {m}{m === currentModel ? " (current)" : ""}
         </option>

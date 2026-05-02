@@ -142,7 +142,7 @@
 
   <!-- Tabs -->
   <div class="stats-tabs">
-    {#each tabs as t}
+    {#each tabs as t (t.id)}
       <button class="stats-tab" class:active={tab === t.id} onclick={() => tab = t.id}>
         {t.label}
         {#if t.count > 0}<span class="tab-count">{t.count}</span>{/if}
@@ -158,9 +158,9 @@
         <div class="empty">No timeline events found. Use AI coding tools to build your adoption history.</div>
       {:else}
         <div class="timeline">
-          {#each timelineByMonth as group}
+          {#each timelineByMonth as group (group.month)}
             <div class="tl-month">{group.month}</div>
-            {#each group.events as ev}
+            {#each group.events as ev, i (i)}
               <div class="tl-event">
                 <div class="tl-line">
                   <span class="tl-dot" style="background:{catColors[ev.category] || 'var(--text-secondary)'}">
@@ -209,7 +209,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each stats.tools as t}
+              {#each stats.tools as t (t.provider)}
                 {@const spanDays = t.firstSession && t.lastSession ? Math.ceil((new Date(t.lastSession) - new Date(t.firstSession)) / 86400000) : 0}
                 <tr>
                   <td>
@@ -246,7 +246,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each stats.artifacts as a}
+              {#each stats.artifacts as a, i (i)}
                 <tr>
                   <td>
                     <span class="art-dot" style="background:{catColors[a.category] || 'var(--text-secondary)'}">
