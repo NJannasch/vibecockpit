@@ -9,7 +9,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 //go:embed assets/AppIcon.icns
@@ -33,6 +36,52 @@ func confirm(opts Options, prompt string) bool {
 	}
 	line := strings.TrimSpace(scanner.Text())
 	return line == "" || strings.EqualFold(line, "y")
+}
+
+func stopRunningInstances(binPath string, opts Options) error {
+	out, err := exec.Command("pgrep", "-x", "vibecockpit").Output()
+	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		return nil
+	}
+
+	self := os.Getpid()
+	var pids []int
+	for _, line := range strings.Fields(strings.TrimSpace(string(out))) {
+		pid, err := strconv.Atoi(line)
+		if err != nil || pid == self {
+			continue
+		}
+		pids = append(pids, pid)
+	}
+	if len(pids) == 0 {
+		return nil
+	}
+
+	fmt.Fprintf(opts.Stdout, "Found %d running VibeCockpit process(es)\n", len(pids))
+	if !opts.Force {
+		fmt.Fprint(opts.Stdout, "Stop them to continue install? [Y/n] ")
+		reader := bufio.NewReader(opts.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer == "n" || answer == "no" {
+			return fmt.Errorf("cannot update while VibeCockpit is running — stop it first")
+		}
+	}
+
+	for _, pid := range pids {
+		if p, err := os.FindProcess(pid); err == nil {
+			_ = p.Signal(syscall.SIGTERM)
+		}
+	}
+	time.Sleep(time.Second)
+	for _, pid := range pids {
+		if p, err := os.FindProcess(pid); err == nil {
+			_ = p.Signal(syscall.SIGKILL)
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	fmt.Fprintln(opts.Stdout, "Stopped running processes")
+	return nil
 }
 
 func Install(opts Options) error {
@@ -60,6 +109,10 @@ func Install(opts Options) error {
 	}
 
 	if exe != dest {
+		if err := stopRunningInstances(dest, opts); err != nil {
+			return err
+		}
+
 		src, err := os.Open(exe)
 		if err != nil {
 			return err

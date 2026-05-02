@@ -3,7 +3,13 @@
   import { providerColors, providerLabels, relativeTime, computeDashboardData } from "../lib/utils.js";
   import { fetchBoards } from "../lib/api.js";
 
-  let { sessions, onnavigate, onlaunch, onfilterby } = $props();
+  let { sessions, onnavigate, onlaunch, onfilterby, mcpEnabled = false } = $props();
+  let mcpHintDismissed = $state(localStorage.getItem("vc-mcp-hint-dismissed") === "1");
+
+  function dismissMcpHint() {
+    localStorage.setItem("vc-mcp-hint-dismissed", "1");
+    mcpHintDismissed = true;
+  }
   let boards = $state([]);
 
   onMount(async () => {
@@ -19,17 +25,13 @@
     return data;
   });
 
-  function isRemote(name) {
-    return name && name.startsWith("remote-");
-  }
-
   function displayName(name) {
-    if (isRemote(name)) return name.replace(/^remote-/, "");
+    if (name && name.startsWith("remote-")) return name.replace(/^remote-/, "");
     return providerLabels[name] || name;
   }
 
   function color(name) {
-    const base = isRemote(name) ? name.replace(/^remote-/, "") : name;
+    const base = name && name.startsWith("remote-") ? name.replace(/^remote-/, "") : name;
     return providerColors[base] || providerColors[name] || "var(--primary)";
   }
 
@@ -38,426 +40,218 @@
     return text.length > max ? text.slice(0, max - 3) + "..." : text;
   }
 
-  // Split providers into front row (top 2 — one each side of the captain
-  // seat) and back row (the rest). Front-row capacity is fixed at 2 by
-  // the markup; bumping this past 2 silently drops the extras.
-  let frontRow = $derived(dashboardData.providers.slice(0, Math.min(2, dashboardData.providers.length)));
-  let backRow = $derived(dashboardData.providers.slice(Math.min(2, dashboardData.providers.length)));
+  let activeSessions = $derived(sessions.filter(s => s.isActive));
+  let totalEstCost = $derived(sessions.reduce((sum, s) => sum + (s.estCostUsd || 0), 0));
+  let inProgressTasks = $derived(boards.flatMap(b => (b.tasks || []).filter(t => t.status === "in-progress")));
 </script>
 
-<div class="cockpit">
-  <!-- Windshield -->
-  <svg class="windshield" viewBox="0 0 800 60" preserveAspectRatio="none">
-    <path d="M0 60 Q0 0 400 0 Q800 0 800 60" fill="none" stroke="var(--border)" stroke-width="1.5"/>
-  </svg>
-
-  <!-- Instrument panel: total stats -->
-  <div class="instruments">
-    <div class="gauge">
-      <span class="gauge-value">{dashboardData.totalSessions}</span>
-      <span class="gauge-label">sessions</span>
+<div class="dash">
+  <!-- Metric cards -->
+  <div class="metrics">
+    <div class="metric-card">
+      <span class="metric-value">{sessions.length}</span>
+      <span class="metric-label">sessions</span>
     </div>
-    <div class="gauge">
-      <span class="gauge-value">{dashboardData.providers.length}</span>
-      <span class="gauge-label">sources</span>
+    <div class="metric-card">
+      <span class="metric-value" class:metric-active={activeSessions.length > 0}>{activeSessions.length}</span>
+      <span class="metric-label">active</span>
     </div>
-    <div class="gauge">
-      <span class="gauge-value" class:active-glow={dashboardData.totalActive > 0}>{dashboardData.totalActive}</span>
-      <span class="gauge-label">active</span>
+    <div class="metric-card">
+      <span class="metric-value">{dashboardData.providers.length}</span>
+      <span class="metric-label">tools</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-value">~${totalEstCost >= 1000 ? (totalEstCost/1000).toFixed(1) + "k" : totalEstCost.toFixed(0)}</span>
+      <span class="metric-label">est. cost</span>
     </div>
   </div>
 
-  <!-- Cockpit floor -->
-  <div class="floor">
-    <!-- Back row seats -->
-    {#if backRow.length > 0}
-      <div class="seat-row back-row">
-        {#each backRow as p}
-          <button class="seat seat-sm" class:seat-remote={isRemote(p.id)} style="--seat-color:{color(p.id)}" onclick={() => onfilterby(p.id)}>
-            <span class="seat-headrest"></span>
-            <span class="seat-dot"></span>
-            <span class="seat-name">{displayName(p.id)}</span>
-            <span class="seat-count">{p.sessions}</span>
-            {#if p.active > 0}<span class="seat-active">&#9679;</span>{/if}
-          </button>
-        {/each}
-        <!-- Placeholder seats -->
-        <div class="seat seat-placeholder"><span class="seat-plus">+</span></div>
-        <div class="seat seat-placeholder"><span class="seat-plus">+</span></div>
-      </div>
-    {/if}
-
-    <!-- Front row: main copilots + captain -->
-    <div class="seat-row front-row">
-      {#if frontRow.length > 0}
-        <button class="seat seat-lg" style="--seat-color:{color(frontRow[0].id)}" onclick={() => onfilterby(frontRow[0].id)}>
-          <span class="seat-headrest"></span>
-          <span class="seat-dot"></span>
-          <span class="seat-name">{displayName(frontRow[0].id)}</span>
-          <span class="seat-count">{frontRow[0].sessions}</span>
-          {#if frontRow[0].active > 0}<span class="seat-active">&#9679; {frontRow[0].active}</span>{/if}
-        </button>
+  <!-- Two-column layout -->
+  <div class="dash-grid">
+    <!-- Left: active sessions + providers -->
+    <div class="dash-col">
+      {#if activeSessions.length > 0}
+        <div class="dash-card">
+          <h3 class="dash-card-title">Active sessions</h3>
+          {#each activeSessions as s (s.id)}
+            <button class="active-row" onclick={() => onlaunch(s.id, s.provider)}>
+              <span class="active-dot" style="background:{color(s.provider)}"></span>
+              <span class="active-project">{s.projectName || "untitled"}</span>
+              <span class="active-meta">{displayName(s.provider)}</span>
+              {#if s.estCostUsd > 0}<span class="active-cost">~${s.estCostUsd.toFixed(0)}</span>{/if}
+            </button>
+          {/each}
+        </div>
       {/if}
 
-      <!-- Captain seat (you) -->
-      <div class="seat seat-captain">
-        <span class="seat-headrest captain-headrest"></span>
-        <span class="captain-label">YOU</span>
-        <span class="captain-sub">captain</span>
+      <div class="dash-card">
+        <h3 class="dash-card-title">Tools</h3>
+        <div class="tool-grid">
+          {#each dashboardData.providers as p (p.id)}
+            <button class="tool-chip" style="--chip-color:{color(p.id)}" onclick={() => onfilterby(p.id)}>
+              <span class="tool-dot"></span>
+              <span class="tool-name">{displayName(p.id)}</span>
+              <span class="tool-count">{p.sessions}</span>
+              {#if p.active > 0}<span class="tool-active">&#9679;</span>{/if}
+            </button>
+          {/each}
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: boards + recent -->
+    <div class="dash-col">
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h3 class="dash-card-title">Planner</h3>
+          <button class="dash-link" onclick={() => onnavigate("planner")}>{boards.length > 0 ? "Open" : "Create"} &rarr;</button>
+        </div>
+        {#if boards.length > 0}
+          {#each boards as b (b.name)}
+            {@const active = (b.tasks || []).filter(t => t.status !== "archived")}
+            {@const working = active.filter(t => t.status === "in-progress").length}
+            <button class="board-row" onclick={() => onnavigate("planner")}>
+              <span class="board-row-name">{b.name}</span>
+              <span class="board-row-stats">
+                {active.length} tasks
+                {#if working > 0}<span class="board-row-active">&#9679; {working}</span>{/if}
+              </span>
+            </button>
+          {/each}
+          {#if inProgressTasks.length > 0}
+            <div class="in-progress-list">
+              {#each inProgressTasks as t (t.id)}
+                <div class="in-progress-item">
+                  <span class="in-progress-dot"></span>
+                  <span class="in-progress-title">{truncate(t.title, 40)}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {:else}
+          <p class="dash-empty">No boards yet — track agentic tasks with cost per feature.</p>
+        {/if}
       </div>
 
-      {#if frontRow.length > 1}
-        <button class="seat seat-lg" style="--seat-color:{color(frontRow[1].id)}" onclick={() => onfilterby(frontRow[1].id)}>
-          <span class="seat-headrest"></span>
-          <span class="seat-dot"></span>
-          <span class="seat-name">{displayName(frontRow[1].id)}</span>
-          <span class="seat-count">{frontRow[1].sessions}</span>
-          {#if frontRow[1].active > 0}<span class="seat-active">&#9679; {frontRow[1].active}</span>{/if}
-        </button>
+      {#if dashboardData.recentSessions.length > 0}
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Recent sessions</h3>
+            <button class="dash-link" onclick={() => onnavigate("sessions")}>All &rarr;</button>
+          </div>
+          {#each dashboardData.recentSessions.slice(0, 6) as s (s.id)}
+            <button class="recent-row" onclick={() => onlaunch(s.id, s.provider)}>
+              <span class="recent-dot" style="background:{color(s.provider)}"></span>
+              <span class="recent-project">{s.projectName || "untitled"}</span>
+              <span class="recent-summary">{truncate(s.summary || s.firstPrompt || "", 40)}</span>
+              {#if s.isActive}<span class="recent-badge">active</span>{/if}
+              <span class="recent-time">{relativeTime(s.modified)}</span>
+            </button>
+          {/each}
+        </div>
       {/if}
     </div>
-
-    <!-- Yoke -->
-    <div class="yoke"></div>
   </div>
 
-  <!-- Boards banner -->
-  <div class="boards-banner">
-    <div class="boards-banner-header">
-      <h3 class="recent-heading">Planner</h3>
-      <button class="boards-banner-link" onclick={() => onnavigate("planner")}>
-        {boards.length > 0 ? "View all" : "Create board"} <span>&rarr;</span>
-      </button>
-    </div>
-    {#if boards.length > 0}
-      <div class="boards-banner-list">
-        {#each boards as b}
-          {@const active = (b.tasks || []).filter(t => t.status !== "archived")}
-          {@const working = active.filter(t => t.status === "in-progress").length}
-          {@const done = active.filter(t => t.status === "done").length}
-          <button class="boards-banner-card" onclick={() => onnavigate("planner")}>
-            <span class="boards-banner-name">{b.name}</span>
-            <span class="boards-banner-stats">
-              {active.length} tasks
-              {#if working > 0}<span class="boards-banner-active">&#9679; {working}</span>{/if}
-              {#if done > 0}<span class="boards-banner-done">&#10003; {done}</span>{/if}
-            </span>
-          </button>
-        {/each}
+  {#if !mcpEnabled && !mcpHintDismissed && sessions.length > 0}
+    <div class="mcp-hint">
+      <div class="mcp-hint-content">
+        <strong>Connect your agents</strong>
+        <span>Enable MCP in Settings and add <code>.mcp.json</code> to your project — your AI agents can then track tasks, link sessions, and report costs automatically.</span>
       </div>
-    {:else}
-      <p class="boards-banner-empty">No boards yet — create one to track agentic tasks.</p>
-    {/if}
-  </div>
-
-  <!-- Recent flights -->
-  {#if dashboardData.recentSessions.length > 0}
-    <div class="recent">
-      <h3 class="recent-heading">Recent flights</h3>
-      <div class="recent-list">
-        {#each dashboardData.recentSessions as s}
-          <button class="recent-row" onclick={() => onlaunch(s.id, s.provider)}>
-            <span class="recent-dot" style="background:{color(s.provider)}"></span>
-            <span class="recent-project">{s.projectName || "untitled"}</span>
-            <span class="recent-summary">{truncate(s.summary || s.firstPrompt || "", 55)}</span>
-            {#if s.isActive}<span class="recent-badge">active</span>{/if}
-            <span class="recent-time">{relativeTime(s.modified)}</span>
-          </button>
-        {/each}
+      <div class="mcp-hint-actions">
+        <button class="btn btn-sm btn-primary" onclick={() => onnavigate("settings")}>Enable MCP</button>
+        <button class="btn btn-sm" onclick={dismissMcpHint}>Dismiss</button>
       </div>
     </div>
   {/if}
-
-  <div class="cta">
-    <button class="btn-view-all" onclick={() => onnavigate("sessions")}>
-      View All Sessions <span class="cta-arrow">&rarr;</span>
-    </button>
-  </div>
-
-  <div class="privacy-notice">
-    <span class="privacy-icon">&#128274;</span>
-    VibeCockpit scans your local AI tool directories (e.g. <code>~/.claude</code>, <code>~/.codex</code>) to discover sessions, configs, and extensions. All analysis happens entirely on your machine — no data is sent anywhere.
-  </div>
 </div>
 
 <style>
-  .cockpit {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 0 1.5rem 3rem;
-  }
+  .dash { max-width: 900px; margin: 0 auto; padding: 0 1.5rem 2rem; }
 
-  /* ─── Windshield ─── */
-  .windshield {
-    width: 100%;
-    height: 40px;
-    opacity: .4;
-    margin-bottom: .5rem;
-  }
+  /* Metrics */
+  .metrics { display: flex; gap: .6rem; margin-bottom: 1rem; }
+  .metric-card { flex: 1; text-align: center; padding: .7rem .5rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); }
+  .metric-value { display: block; font-size: 1.4rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .metric-value.metric-active { color: var(--success); }
+  .metric-label { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
 
-  /* ─── Instruments ─── */
-  .instruments {
-    display: flex;
-    justify-content: center;
-    gap: 2.5rem;
-    margin-bottom: 1.5rem;
-  }
-  .gauge {
-    text-align: center;
-  }
-  .gauge-value {
-    display: block;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1;
-  }
-  .gauge-value.active-glow {
-    color: var(--success);
-  }
-  .gauge-label {
-    font-size: .72rem;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
+  /* Grid */
+  .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
 
-  /* ─── Floor ─── */
-  .floor {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 60px 60px 20px 20px;
-    padding: 1.5rem 1.5rem 1rem;
-    margin-bottom: 2rem;
-    position: relative;
-  }
+  /* Cards */
+  .dash-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; margin-bottom: .8rem; }
+  .dash-card:last-child { margin-bottom: 0; }
+  .dash-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .4rem; }
+  .dash-card-title { font-size: .82rem; font-weight: 600; color: var(--text); margin: 0 0 .4rem; }
+  .dash-card-header .dash-card-title { margin: 0; }
+  .dash-link { background: none; border: none; font-family: inherit; font-size: .75rem; color: var(--primary); cursor: pointer; padding: 0; }
+  .dash-link:hover { text-decoration: underline; }
+  .dash-empty { font-size: .8rem; color: var(--text-muted); margin: 0; }
 
-  /* ─── Seat rows ─── */
-  .seat-row {
-    display: flex;
-    justify-content: center;
-    gap: .6rem;
-    margin-bottom: .8rem;
-  }
+  /* Active sessions */
+  .active-row { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .35rem .5rem;
+    background: none; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    cursor: pointer; font-family: inherit; color: var(--text); text-align: left; margin-bottom: .3rem; transition: border-color .15s; }
+  .active-row:hover { border-color: var(--primary); }
+  .active-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+  .active-project { font-size: .82rem; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .active-meta { font-size: .7rem; color: var(--text-muted); flex-shrink: 0; }
+  .active-cost { font-size: .72rem; font-weight: 600; color: var(--warning, #f59e0b); flex-shrink: 0; }
 
-  .seat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    cursor: pointer;
-    font-family: inherit;
-    color: var(--text);
-    transition: all 150ms ease;
-    position: relative;
-    padding: .6rem .5rem .5rem;
-  }
-  .seat:hover {
-    border-color: var(--seat-color, var(--border));
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,.08);
-  }
+  /* Tools */
+  .tool-grid { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .tool-chip { display: flex; align-items: center; gap: .3rem; padding: .25rem .5rem;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    cursor: pointer; font-family: inherit; color: var(--text); font-size: .78rem; transition: border-color .15s; }
+  .tool-chip:hover { border-color: var(--chip-color); }
+  .tool-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--chip-color); flex-shrink: 0; }
+  .tool-name { font-weight: 500; }
+  .tool-count { color: var(--text-muted); font-size: .72rem; }
+  .tool-active { color: var(--success); font-size: .6rem; }
 
-  .seat-sm {
-    width: 70px;
-    min-height: 60px;
-  }
-  .seat-lg {
-    width: 90px;
-    min-height: 72px;
-  }
+  /* Boards */
+  .board-row { display: flex; align-items: center; justify-content: space-between; width: 100%;
+    padding: .35rem .5rem; background: none; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    cursor: pointer; font-family: inherit; color: var(--text); text-align: left; margin-bottom: .3rem; transition: border-color .15s; }
+  .board-row:hover { border-color: var(--primary); }
+  .board-row-name { font-size: .82rem; font-weight: 600; }
+  .board-row-stats { font-size: .72rem; color: var(--text-muted); display: flex; gap: .4rem; }
+  .board-row-active { color: var(--success); }
+  .in-progress-list { margin-top: .3rem; padding-top: .3rem; border-top: 1px solid var(--border); }
+  .in-progress-item { display: flex; align-items: center; gap: .4rem; font-size: .75rem; color: var(--text-secondary); padding: .15rem 0; }
+  .in-progress-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+  .in-progress-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .seat-headrest {
-    position: absolute;
-    top: -6px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 40px;
-    height: 8px;
-    border-radius: 4px;
-    background: var(--seat-color, var(--border));
-    opacity: .25;
-  }
-  .seat-sm .seat-headrest { width: 30px; height: 7px; }
-
-  .seat-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--seat-color, var(--text-secondary));
-    margin-bottom: .2rem;
-  }
-  .seat-name {
-    font-size: .65rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    white-space: nowrap;
-  }
-  .seat-count {
-    font-size: 1rem;
-    font-weight: 700;
-    line-height: 1.2;
-  }
-  .seat-sm .seat-count { font-size: .85rem; }
-  .seat-active {
-    font-size: .55rem;
-    color: var(--success);
-  }
-
-  .seat-remote {
-    border-style: dashed;
-  }
-
-  .seat-placeholder {
-    background: none;
-    border: 1px dashed var(--border);
-    cursor: default;
-    opacity: .5;
-    width: 70px;
-    min-height: 60px;
-    justify-content: center;
-  }
-  .seat-placeholder:hover {
-    transform: none;
-    box-shadow: none;
-  }
-  .seat-plus {
-    font-size: 1.2rem;
-    color: var(--border);
-  }
-
-  /* ─── Captain ─── */
-  .seat-captain {
-    width: 100px;
-    min-height: 80px;
-    background: var(--bg);
-    border: 2px solid var(--text-secondary);
-    border-radius: 14px;
-    cursor: default;
-    padding: .8rem .5rem .6rem;
-  }
-  .seat-captain:hover {
-    transform: none;
-    box-shadow: none;
-  }
-  .captain-headrest {
-    width: 50px !important;
-    height: 10px !important;
-    background: var(--text-secondary) !important;
-    opacity: .2 !important;
-  }
-  .captain-label {
-    font-size: .9rem;
-    font-weight: 700;
-    color: var(--text);
-    margin-top: .2rem;
-  }
-  .captain-sub {
-    font-size: .6rem;
-    color: var(--text-secondary);
-  }
-
-  /* ─── Yoke ─── */
-  .yoke {
-    width: 36px;
-    height: 14px;
-    border: 1.5px solid var(--border);
-    border-radius: 50%;
-    margin: 0 auto;
-  }
-
-  /* ─── Boards banner ─── */
-  .boards-banner { margin-bottom: 1.5rem; }
-  .boards-banner-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
-  .boards-banner-link { background: none; border: none; cursor: pointer; font-family: inherit; font-size: .78rem; color: var(--primary); padding: 0; }
-  .boards-banner-link:hover { text-decoration: underline; }
-  .boards-banner-list { display: flex; gap: .5rem; flex-wrap: wrap; }
-  .boards-banner-card { display: flex; align-items: center; justify-content: space-between; gap: .8rem;
-    padding: .5rem .8rem; background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; color: var(--text);
-    transition: border-color .15s; flex: 1; min-width: 160px; text-align: left; }
-  .boards-banner-card:hover { border-color: var(--primary); }
-  .boards-banner-name { font-size: .85rem; font-weight: 600; }
-  .boards-banner-stats { font-size: .72rem; color: var(--text-secondary); display: flex; gap: .4rem; align-items: center; }
-  .boards-banner-active { color: var(--success); }
-  .boards-banner-done { color: var(--text-muted); }
-  .boards-banner-empty { font-size: .82rem; color: var(--text-muted); margin: 0; }
-
-  /* ─── Recent ─── */
-  .recent {
-    margin-bottom: 1.5rem;
-  }
-  .recent-heading {
-    font-size: .9rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: .5rem;
-  }
-  .recent-list {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .recent-row {
-    display: flex;
-    align-items: center;
-    gap: .6rem;
-    width: 100%;
-    padding: .55rem .8rem;
-    border: none;
-    background: none;
-    cursor: pointer;
-    text-align: left;
-    font-family: inherit;
-    color: var(--text);
-    transition: background 150ms ease;
-    border-bottom: 1px solid var(--border);
-  }
+  /* Recent */
+  .recent-row { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .3rem .5rem;
+    background: none; border: none; cursor: pointer; font-family: inherit; color: var(--text);
+    text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; }
   .recent-row:last-child { border-bottom: none; }
   .recent-row:hover { background: var(--surface-hover); }
-  .recent-dot {
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-  }
-  .recent-project {
-    font-weight: 600; font-size: .8rem; white-space: nowrap;
-    flex-shrink: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis;
-  }
-  .recent-summary {
-    flex: 1; font-size: .78rem; color: var(--text-secondary);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
-  }
-  .recent-badge {
-    font-size: .6rem; font-weight: 500; color: var(--success);
-    background: var(--success-dim); padding: .1rem .35rem; border-radius: 8px;
-    flex-shrink: 0;
-  }
-  .recent-time {
-    font-size: .72rem; color: var(--text-secondary); white-space: nowrap;
-    flex-shrink: 0; min-width: 3.5rem; text-align: right;
-  }
+  .recent-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .recent-project { font-size: .8rem; font-weight: 600; flex-shrink: 0; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .recent-summary { flex: 1; font-size: .75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .recent-badge { font-size: .6rem; color: var(--success); background: var(--success-dim); padding: .05rem .3rem; border-radius: 6px; flex-shrink: 0; }
+  .recent-time { font-size: .7rem; color: var(--text-muted); flex-shrink: 0; }
 
-  /* ─── CTA ─── */
-  .cta { text-align: center; }
-  .btn-view-all {
-    display: inline-flex; align-items: center; gap: .5rem;
-    padding: .6rem 1.2rem; border-radius: var(--radius-sm);
-    font-size: .85rem; font-weight: 500; cursor: pointer;
-    border: 1px solid var(--border); background: var(--surface);
-    color: var(--text); font-family: inherit; transition: all 150ms ease;
-  }
-  .btn-view-all:hover {
-    border-color: var(--primary); color: var(--primary); background: var(--primary-glow);
-  }
-  .cta-arrow { transition: transform 150ms ease; }
-  .btn-view-all:hover .cta-arrow { transform: translateX(3px); }
+  /* MCP hint */
+  .mcp-hint { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: .7rem 1rem; background: var(--primary-glow, rgba(99,102,241,.06));
+    border: 1px solid var(--primary); border-radius: var(--radius-sm); margin-top: 1rem; flex-wrap: wrap; }
+  .mcp-hint-content { flex: 1; font-size: .82rem; color: var(--text); min-width: 200px; }
+  .mcp-hint-content strong { display: block; margin-bottom: .15rem; }
+  .mcp-hint-content span { color: var(--text-secondary); }
+  .mcp-hint-content code { font-size: .75rem; background: var(--surface); padding: .1rem .3rem; border-radius: 3px; }
+  .mcp-hint-actions { display: flex; gap: .4rem; flex-shrink: 0; }
 
-  /* ─── Responsive ─── */
   @media (max-width: 700px) {
-    .seat-row { flex-wrap: wrap; }
-    .instruments { gap: 1.5rem; }
+    .dash-grid { grid-template-columns: 1fr; }
+    .metrics { flex-wrap: wrap; }
+    .metric-card { min-width: 70px; }
     .recent-summary { display: none; }
   }
 </style>
