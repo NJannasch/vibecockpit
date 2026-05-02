@@ -141,9 +141,14 @@
               {/if}
             </div>
             <div class="agent-item-info">
-              <span class="agent-item-task">{run.taskTitle || run.taskId}</span>
+              <span class="agent-item-task">
+                {run.taskTitle || run.taskId}
+                {#if run.source === "scheduled"}
+                  <span class="source-tag source-scheduled" title="Triggered by a scheduled job">Scheduled</span>
+                {/if}
+              </span>
               <span class="agent-item-meta">
-                {run.boardName} · {run.tool}{run.model ? " · " + run.model : ""}
+                {run.boardName || run.project?.split('/').pop() || ''} · {run.tool}{run.model ? " · " + run.model : ""}
               </span>
             </div>
             <div class="agent-item-right">
@@ -162,9 +167,20 @@
         {#if selectedAgent}
           <div class="agent-detail-header">
             <div>
-              <h3 class="agent-detail-title">{selectedAgent.taskTitle || selectedAgent.taskId}</h3>
+              <h3 class="agent-detail-title">
+                {selectedAgent.taskTitle || selectedAgent.taskId}
+                {#if selectedAgent.source === "scheduled"}
+                  <span class="source-tag source-scheduled">Scheduled</span>
+                {/if}
+              </h3>
               <span class="agent-detail-meta">
-                <button class="agent-link" onclick={() => onnavigate("planner")}>{selectedAgent.boardName}</button> · {selectedAgent.project} · {selectedAgent.tool}{selectedAgent.model ? " · " + selectedAgent.model : ""}
+                {#if selectedAgent.boardName}
+                  <button class="agent-link" onclick={() => onnavigate("planner")}>{selectedAgent.boardName}</button> ·
+                {/if}
+                {selectedAgent.project} · {selectedAgent.tool}{selectedAgent.model ? " · " + selectedAgent.model : ""}
+                {#if selectedAgent.source === "scheduled"}
+                  · <button class="agent-link" onclick={() => onnavigate("scheduler")}>View schedule</button>
+                {/if}
               </span>
             </div>
             <div class="agent-detail-actions">
@@ -330,6 +346,12 @@
   .agent-log + .agent-log { margin-top: .5rem; }
   .agent-log-diff { font-family: monospace; font-size: .7rem; max-height: 400px; }
   .agent-link { background: none; border: none; color: var(--primary); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+
+  .source-tag {
+    display: inline-block; font-size: .6rem; font-weight: 600; padding: 1px 5px;
+    border-radius: 6px; vertical-align: middle; margin-left: 4px; text-transform: uppercase; letter-spacing: .3px;
+  }
+  .source-scheduled { background: #fef3c7; color: #92400e; }
 
   .agent-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
   .agent-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 90%; max-width: 400px; }

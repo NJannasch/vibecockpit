@@ -27,6 +27,7 @@ import (
 	"vibecockpit/internal/launcher"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/scanner"
+	"vibecockpit/internal/scheduler"
 	"vibecockpit/internal/stats"
 )
 
@@ -48,7 +49,8 @@ type server struct {
 	inventoryTTL      time.Duration
 	demoMode          bool
 
-	auditLog *audit.Logger
+	auditLog  *audit.Logger
+	scheduler *scheduler.Scheduler
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -102,6 +104,7 @@ type providerInfo struct {
 
 func Start(cfg *config.Config, providers []provider.Provider, port int, version string) error {
 	isDemo := len(providers) == 1 && providers[0].Name() == "demo"
+	sched := scheduler.New(cfg)
 	s := &server{
 		cfg: cfg, providers: providers, version: version,
 		cacheTTL:     10 * time.Second,
@@ -109,6 +112,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 		demoMode:     isDemo,
 		auditLog:     audit.NewLogger(),
 		sessionCache: newScanCache(providers),
+		scheduler:    sched,
 		secretScanner: func() *scanner.Scanner {
 			if cfg.EnableScanner {
 				return scanner.New(providers, scanner.Config{
@@ -154,6 +158,16 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("DELETE /api/agents/{taskId}", s.handleDeleteAgentRun)
 	mux.HandleFunc("GET /api/agents/{taskId}/diff", s.handleAgentDiff)
 	mux.HandleFunc("POST /api/agents/{taskId}/merge", s.handleAgentMerge)
+	mux.HandleFunc("GET /api/jobs", s.handleGetJobs)
+	mux.HandleFunc("POST /api/jobs", s.handleCreateJob)
+	mux.HandleFunc("GET /api/jobs/{id}", s.handleGetJob)
+	mux.HandleFunc("PUT /api/jobs/{id}", s.handleUpdateJob)
+	mux.HandleFunc("DELETE /api/jobs/{id}", s.handleDeleteJob)
+	mux.HandleFunc("POST /api/jobs/{id}/trigger", s.handleTriggerJob)
+	mux.HandleFunc("POST /api/jobs/{id}/pause", s.handlePauseJob)
+	mux.HandleFunc("POST /api/jobs/{id}/resume", s.handleResumeJob)
+	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleCancelJob)
+	mux.HandleFunc("GET /api/jobs/{id}/runs", s.handleJobRuns)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
@@ -181,6 +195,8 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 			return err
 		}
 	}
+
+	sched.Start()
 
 	fmt.Printf("VibeCockpit web UI: http://%s\n", addr)
 	fmt.Println("Press Ctrl+C to stop")
@@ -1243,6 +1259,123 @@ func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// -- Scheduled Jobs handlers --
+
+func (s *server) handleGetJobs(w http.ResponseWriter, _ *http.Request) {
+	jobs := s.scheduler.GetJobs()
+	if jobs == nil {
+		jobs = []scheduler.Job{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(jobs)
+}
+
+func (s *server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	j := s.scheduler.GetJob(id)
+	if j == nil {
+		jsonError(w, "job not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(j)
+}
+
+func (s *server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
+	var j scheduler.Job
+	if err := json.NewDecoder(r.Body).Decode(&j); err != nil {
+		jsonError(w, "invalid request", 400)
+		return
+	}
+	if j.Name == "" || j.Cron == "" || j.Prompt == "" {
+		jsonError(w, "name, cron, and prompt are required", 400)
+		return
+	}
+	created, err := s.scheduler.CreateJob(j)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(created)
+}
+
+func (s *server) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var updates map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		jsonError(w, "invalid request", 400)
+		return
+	}
+	updated, err := s.scheduler.UpdateJob(id, updates)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updated)
+}
+
+func (s *server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.DeleteJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleTriggerJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.TriggerJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "triggered"})
+}
+
+func (s *server) handlePauseJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.PauseJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleResumeJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.ResumeJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.CancelJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleJobRuns(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	runs := s.scheduler.GetJobRuns(id)
+	if runs == nil {
+		runs = []runner.AgentRun{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(runs)
 }
 
 // getLatestVersion returns the cached latest release tag, refreshing it

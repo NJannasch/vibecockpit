@@ -28,6 +28,7 @@ type AgentRun struct {
 	WorkDir   string    `json:"workDir"`
 	LogPath   string    `json:"logPath"`
 	ExitCode  int       `json:"exitCode,omitempty"`
+	Source    string    `json:"source,omitempty"`
 }
 
 var (
@@ -107,6 +108,13 @@ func trackEnd(taskID string, exitCode int) {
 	}
 }
 
+func runSource(taskID string) string {
+	if strings.HasPrefix(taskID, "job-") {
+		return "scheduled"
+	}
+	return "task"
+}
+
 func GetActiveRuns() []AgentRun {
 	trackerMu.Lock()
 	defer trackerMu.Unlock()
@@ -116,6 +124,7 @@ func GetActiveRuns() []AgentRun {
 		if run.Status == "running" {
 			run.Elapsed = time.Since(run.StartedAt).Truncate(time.Second).String()
 		}
+		run.Source = runSource(run.TaskID)
 		runs = append(runs, run)
 	}
 	return runs
@@ -129,6 +138,7 @@ func GetRun(taskID string) *AgentRun {
 		if run.Status == "running" {
 			run.Elapsed = time.Since(run.StartedAt).Truncate(time.Second).String()
 		}
+		run.Source = runSource(run.TaskID)
 		return &run
 	}
 	return nil

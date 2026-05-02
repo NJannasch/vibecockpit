@@ -202,3 +202,74 @@ export async function updateBoardTask(boardName, taskId, updates) {
   if (!res.ok) throw new Error(`Failed to update task: ${res.statusText}`);
   return res.json();
 }
+
+export async function fetchJobs() {
+  const res = await fetch("/api/jobs");
+  if (!res.ok) throw new Error(`Failed to fetch jobs: ${res.statusText}`);
+  return res.json();
+}
+
+export async function createJob(job) {
+  const res = await fetch("/api/jobs", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(job),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+export async function updateJob(id, updates) {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+export async function deleteJob(id) {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+export async function triggerJob(id) {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(id)}/trigger`, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+export async function pauseJob(id) {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(id)}/pause`, { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to pause job: ${res.statusText}`);
+  return res.json();
+}
+
+export async function resumeJob(id) {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(id)}/resume`, { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to resume job: ${res.statusText}`);
+  return res.json();
+}
+
+export async function cancelJob(id) {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}

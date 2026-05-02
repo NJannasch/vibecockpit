@@ -12,11 +12,13 @@ import (
 
 	"vibecockpit/internal/audit"
 	"vibecockpit/internal/board"
+	"vibecockpit/internal/config"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/sanitize"
 	"vibecockpit/internal/scanner"
+	"vibecockpit/internal/scheduler"
 	"vibecockpit/internal/search"
 	"vibecockpit/internal/stats"
 )
@@ -26,14 +28,16 @@ type Server struct {
 	version      string
 	workspaceDir string
 	audit        *audit.Logger
+	scheduler    *scheduler.Scheduler
 }
 
-func NewServer(providers []provider.Provider, version, workspaceDir string) *Server {
+func NewServer(providers []provider.Provider, version, workspaceDir string, cfg *config.Config) *Server {
 	return &Server{
 		providers:    providers,
 		version:      version,
 		workspaceDir: workspaceDir,
 		audit:        audit.NewLogger(),
+		scheduler:    scheduler.New(cfg),
 	}
 }
 
@@ -343,6 +347,99 @@ func (s *Server) toolDefinitions() []map[string]any {
 					},
 				},
 				"required": []string{"board", "title"},
+			},
+		},
+		{
+			"name":        "list_jobs",
+			"description": "List all scheduled jobs with status, next run time, and cron expression.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		{
+			"name":        "create_job",
+			"description": "Create a scheduled job that runs an AI agent on a cron schedule.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{
+						"type":        "string",
+						"description": "Job name.",
+					},
+					"cron": map[string]any{
+						"type":        "string",
+						"description": "Cron expression (5-field: minute hour day month weekday). Example: '0 9 * * *' for daily at 9am.",
+					},
+					"tool": map[string]any{
+						"type":        "string",
+						"description": "Tool to use (claude, codex, gemini, opencode). Default: claude.",
+					},
+					"model": map[string]any{
+						"type":        "string",
+						"description": "Model to use.",
+					},
+					"prompt": map[string]any{
+						"type":        "string",
+						"description": "Prompt for the agent.",
+					},
+					"mcp_servers": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "MCP servers to make available to the agent.",
+					},
+					"board": map[string]any{
+						"type":        "string",
+						"description": "Optional board name to scope the job.",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Optional project path.",
+					},
+					"enabled": map[string]any{
+						"type":        "boolean",
+						"description": "Whether the job is enabled. Default: true.",
+					},
+					"cost_cap": map[string]any{
+						"type":        "number",
+						"description": "Maximum cost in USD before the job is skipped.",
+					},
+				},
+				"required": []string{"name", "cron", "prompt"},
+			},
+		},
+		{
+			"name":        "update_job",
+			"description": "Update a scheduled job's configuration.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{
+						"type":        "string",
+						"description": "Job ID.",
+					},
+					"name":    map[string]any{"type": "string", "description": "New name."},
+					"cron":    map[string]any{"type": "string", "description": "New cron expression."},
+					"tool":    map[string]any{"type": "string", "description": "New tool."},
+					"model":   map[string]any{"type": "string", "description": "New model."},
+					"prompt":  map[string]any{"type": "string", "description": "New prompt."},
+					"enabled": map[string]any{"type": "boolean", "description": "Enable/disable."},
+				},
+				"required": []string{"id"},
+			},
+		},
+		{
+			"name":        "trigger_job",
+			"description": "Manually trigger a scheduled job to run immediately, regardless of its cron schedule.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{
+						"type":        "string",
+						"description": "Job ID to trigger.",
+					},
+				},
+				"required": []string{"id"},
 			},
 		},
 	}
@@ -808,6 +905,85 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			return
 		}
 		result = t
+		count = 1
+
+	case "list_jobs":
+		result = s.scheduler.GetJobs()
+		count = len(s.scheduler.GetJobs())
+
+	case "create_job":
+		var args struct {
+			Name       string   `json:"name"`
+			Cron       string   `json:"cron"`
+			Tool       string   `json:"tool"`
+			Model      string   `json:"model"`
+			Prompt     string   `json:"prompt"`
+			MCPServers []string `json:"mcp_servers"`
+			Board      string   `json:"board"`
+			Project    string   `json:"project"`
+			Enabled    *bool    `json:"enabled"`
+			CostCap    float64  `json:"cost_cap"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		enabled := true
+		if args.Enabled != nil {
+			enabled = *args.Enabled
+		}
+		j, err := s.scheduler.CreateJob(scheduler.Job{
+			Name:       args.Name,
+			Cron:       args.Cron,
+			Tool:       args.Tool,
+			Model:      args.Model,
+			Prompt:     args.Prompt,
+			MCPServers: args.MCPServers,
+			Board:      args.Board,
+			Project:    args.Project,
+			Enabled:    enabled,
+			CostCap:    args.CostCap,
+		})
+		if err != nil {
+			writeError(w, req.ID, -32602, err.Error())
+			return
+		}
+		result = j
+		count = 1
+
+	case "update_job":
+		var args map[string]any
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		id, _ := args["id"].(string)
+		if id == "" {
+			writeError(w, req.ID, -32602, "id is required")
+			return
+		}
+		delete(args, "id")
+		j, err := s.scheduler.UpdateJob(id, args)
+		if err != nil {
+			writeError(w, req.ID, -32602, err.Error())
+			return
+		}
+		result = j
+		count = 1
+
+	case "trigger_job":
+		var args struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		if err := s.scheduler.TriggerJob(args.ID); err != nil {
+			writeError(w, req.ID, -32602, err.Error())
+			return
+		}
+		result = map[string]string{"status": "triggered", "id": args.ID}
 		count = 1
 
 	default:
