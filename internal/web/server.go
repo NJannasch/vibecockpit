@@ -87,6 +87,7 @@ type apiConfig struct {
 	EnableScanner      bool               `json:"enableScanner"`
 	EnableMCP          bool               `json:"enableMcp"`
 	AgentPrompt        string             `json:"agentPrompt,omitempty"`
+	ToolConfigFiles    map[string]string  `json:"toolConfigFiles,omitempty"`
 	ExtraPath          []string           `json:"extraPath,omitempty"`
 	ScanSkipRules      []string           `json:"scanSkipRules,omitempty"`
 	ScanExtraHints     []string           `json:"scanExtraHints,omitempty"`
@@ -542,6 +543,7 @@ func (s *server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		EnableScanner:      s.cfg.EnableScanner,
 		EnableMCP:          s.cfg.EnableMCP,
 		AgentPrompt:        s.cfg.AgentPrompt,
+		ToolConfigFiles:    s.cfg.ToolConfigFiles,
 		RemoteSources:      s.cfg.RemoteSources,
 		ExtraPath:          s.cfg.ExtraPath,
 		ScanSkipRules:      s.cfg.ScanSkipRules,
@@ -591,6 +593,9 @@ func (s *server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	s.cfg.EnableMCP = req.EnableMCP
 	s.cfg.EnableScanner = req.EnableScanner
 	s.cfg.AgentPrompt = req.AgentPrompt
+	if req.ToolConfigFiles != nil {
+		s.cfg.ToolConfigFiles = req.ToolConfigFiles
+	}
 	if err := s.cfg.Save(); err != nil {
 		jsonError(w, err.Error(), 500)
 		return

@@ -217,6 +217,15 @@ main{flex:1;padding:1.5rem 2rem 3rem;animation:pageIn .2s ease}
   padding:1rem 1.2rem;margin-bottom:1rem;
 }
 .settings-section{font-size:.88rem;font-weight:600;margin-bottom:.8rem;color:var(--text)}
+.tool-config-row{margin-bottom:.6rem;padding:.6rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm)}
+.tool-config-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem}
+.tool-config-files{font-size:.72rem;color:var(--text-muted);font-family:monospace}
+.tool-config-options{display:flex;flex-direction:column;gap:.3rem}
+.tool-config-option{display:flex;align-items:center;gap:.4rem;font-size:.8rem;cursor:pointer}
+.tool-config-option input{margin:0}
+.tool-config-option code{font-size:.72rem}
+.tool-config-custom{width:100%;font-size:.78rem;padding:.35rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--text);font-family:monospace;box-sizing:border-box;margin-left:1.3rem}
 .settings-row{display:flex;align-items:center;gap:.8rem;margin-bottom:.6rem}
 .settings-row select,.settings-row input[type="text"]{flex:1}
 .settings-label{display:flex;flex-direction:column;gap:.1rem;min-width:0}

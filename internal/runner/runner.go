@@ -90,7 +90,7 @@ func Run(cfg *config.Config, opts RunOpts) error {
 
 	writeWorktreeGitignore(workDir)
 	if worktreePath != "" {
-		copyToolConfigs(projectDir, workDir)
+		copyToolConfigs(projectDir, workDir, tool, cfg.ToolConfigFiles)
 	}
 
 	if err := ensureMCPConfig(workDir, tc, task.MCP); err != nil {
@@ -472,35 +472,61 @@ func checkAcceptanceCriteria(t *board.Task, workDir string) (failed []string, ou
 	return failed, strings.Join(outputs, "\n")
 }
 
-var toolConfigFiles = []string{
-	"opencode.json",
-	"codex.json",
-	".mcp.json",
-	".gemini/settings.json",
-	".cursor/mcp.json",
-	".codex/config.toml",
+var toolConfigMap = map[string][]string{
+	"claude":   {".mcp.json"},
+	"codex":    {"codex.json", ".codex/config.toml"},
+	"gemini":   {".gemini/settings.json"},
+	"opencode": {"opencode.json"},
+	"cursor":   {".cursor/mcp.json"},
 }
 
-func copyToolConfigs(srcDir, dstDir string) {
+func copyToolConfigs(srcDir, dstDir, tool string, customFiles map[string]string) {
 	home, _ := os.UserHomeDir()
 	globalPaths := map[string]string{
-		"opencode.json":        filepath.Join(home, ".config", "opencode", "opencode.json"),
+		"opencode.json":         filepath.Join(home, ".config", "opencode", "opencode.json"),
 		".gemini/settings.json": filepath.Join(home, ".gemini", "settings.json"),
 		".codex/config.toml":    filepath.Join(home, ".codex", "config.toml"),
 	}
 
-	for _, f := range toolConfigFiles {
+	var files []string
+	cfgValue := customFiles[tool]
+	skipProject := strings.Contains(cfgValue, "no-project")
+	skipGlobal := strings.Contains(cfgValue, "no-global")
+
+	if strings.HasPrefix(cfgValue, "custom:") {
+		customPath := strings.TrimPrefix(cfgValue, "custom:")
+		if customPath != "" {
+			files = []string{customPath}
+		}
+	} else {
+		files = toolConfigMap[tool]
+		if files == nil {
+			files = []string{".mcp.json"}
+		}
+	}
+
+	for _, f := range files {
 		dst := filepath.Join(dstDir, f)
 		if _, err := os.Stat(dst); err == nil {
 			continue
 		}
 
-		// Try project-level first, then global
-		src := filepath.Join(srcDir, f)
-		if _, err := os.Stat(src); err != nil {
-			if globalPath, ok := globalPaths[f]; ok {
-				src = globalPath
+		var src string
+		if !skipProject {
+			candidate := filepath.Join(srcDir, f)
+			if _, err := os.Stat(candidate); err == nil {
+				src = candidate
 			}
+		}
+		if src == "" && !skipGlobal {
+			if globalPath, ok := globalPaths[f]; ok {
+				if _, err := os.Stat(globalPath); err == nil {
+					src = globalPath
+				}
+			}
+		}
+		if src == "" {
+			continue
 		}
 
 		data, err := os.ReadFile(src)
@@ -513,7 +539,7 @@ func copyToolConfigs(srcDir, dstDir string) {
 }
 
 func writeWorktreeGitignore(workDir string) {
-	ignore := "# VibeCockpit agent config — do not commit\n.mcp.json\n.vibecockpit/\n.claude/settings.local.json\ncodex.json\n.gemini/settings.json\nopencode.json\n"
+	ignore := "# VibeCockpit agent config — do not commit\n.mcp.json\n.vibecockpit/\n.claude/\n.codex/\n.gemini/\n.cursor/mcp.json\ncodex.json\nopencode.json\n"
 	gitignorePath := filepath.Join(workDir, ".gitignore")
 	if existing, err := os.ReadFile(gitignorePath); err == nil {
 		if !strings.Contains(string(existing), ".mcp.json") {
