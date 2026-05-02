@@ -38,7 +38,7 @@ func confirm(opts Options, prompt string) bool {
 	return line == "" || strings.EqualFold(line, "y")
 }
 
-func stopRunningInstances(binPath string, opts Options) error {
+func stopRunningInstances(_ string, opts Options) error {
 	out, err := exec.Command("pgrep", "-x", "vibecockpit").Output()
 	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
 		return nil
