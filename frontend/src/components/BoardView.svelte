@@ -262,9 +262,9 @@
     <div class="status-item"><span class="status-value">{sessions.length}</span><span class="status-label">sessions</span></div>
     <div class="status-item"><span class="status-value" class:status-active={activeSessions > 0}>{activeSessions}</span><span class="status-label">active</span></div>
     <div class="status-item"><span class="status-value">{providerCount}</span><span class="status-label">providers</span></div>
-    <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">session cost</span></div>
+    <div class="status-item"><span class="status-value">${totalCostAll.toFixed(2)}</span><span class="status-label">est. session cost</span></div>
     {#if totalCost() > 0}
-    <div class="status-item"><span class="status-value status-cost">${totalCost().toFixed(2)}</span><span class="status-label">board cost</span></div>
+    <div class="status-item"><span class="status-value status-cost">${totalCost().toFixed(2)}</span><span class="status-label">est. board cost</span></div>
     {/if}
   </div>
   {/if}
@@ -322,7 +322,7 @@
               <h2>{activeBoard.name}</h2>
               <span class="board-meta" title={activeBoard.filePath}>{activeBoard.project}</span>
               {#if totalCost() > 0}
-                <span class="board-cost">${totalCost().toFixed(2)}</span>
+                <span class="board-cost" title="Estimated API cost">~${totalCost().toFixed(2)}</span>
               {/if}
             </div>
             <div class="board-header-right">
@@ -368,7 +368,7 @@
                       <span class="kanban-priority" style="color:{priorityColors[task.priority] || 'var(--text-muted)'}">{task.priority}</span>
                     {/if}
                     {#if task.cost > 0}
-                      <span class="kanban-cost">${task.cost.toFixed(2)}</span>
+                      <span class="kanban-cost" title="Estimated API cost">~${task.cost.toFixed(2)}</span>
                     {/if}
                   </div>
                   <div class="kanban-card-title">{task.title}</div>
@@ -537,7 +537,7 @@
         </div>
       {/if}
       {#if selectedTask.cost > 0}
-        <div class="task-meta-row"><span class="task-meta-label">Cost</span> <span class="task-cost-value">${selectedTask.cost.toFixed(2)}</span></div>
+        <div class="task-meta-row"><span class="task-meta-label">Est. cost</span> <span class="task-cost-value">${selectedTask.cost.toFixed(2)}</span></div>
       {/if}
       {#if selectedTask.summary}
         <div class="task-meta-row" style="flex-direction:column;align-items:stretch">

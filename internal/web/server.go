@@ -853,6 +853,24 @@ func (s *server) discoverBoards() ([]*board.Board, error) {
 	return board.Discover(s.cfg.NewProjectDir)
 }
 
+func (s *server) computeTaskSessionCost(sessionIDs []string) float64 {
+	var total float64
+	for _, p := range s.providers {
+		sessions, err := p.ScanSessions(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, sess := range sessions {
+			for _, sid := range sessionIDs {
+				if sess.ID == sid {
+					total += costs.EstimateCost(sess.Model, sess.Tokens)
+				}
+			}
+		}
+	}
+	return total
+}
+
 func (s *server) enrichBoardCosts(boards []*board.Board) {
 	sessionCosts := make(map[string]float64)
 	for _, p := range s.providers {
@@ -873,16 +891,24 @@ func (s *server) enrichBoardCosts(boards []*board.Board) {
 			if len(t.Sessions) == 0 {
 				continue
 			}
+			if t.CostAtEnd > 0 {
+				t.Cost = t.CostAtEnd - t.CostAtStart
+				if t.Cost < 0 {
+					t.Cost = 0
+				}
+				continue
+			}
 			var currentTotal float64
 			for _, sid := range t.Sessions {
 				currentTotal += sessionCosts[sid]
 			}
-			if t.CostAtStart > 0 {
+			isActive := t.Status == "in-progress" || t.Status == "claimed"
+			if t.CostAtStart > 0 && isActive {
 				t.Cost = currentTotal - t.CostAtStart
 				if t.Cost < 0 {
 					t.Cost = 0
 				}
-			} else if t.Cost == 0 {
+			} else if t.Cost == 0 && isActive {
 				t.Cost = currentTotal
 			}
 		}
@@ -995,6 +1021,25 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		} else if err := b.MoveTaskBy(taskID, v, by); err != nil {
 			jsonError(w, err.Error(), 400)
 			return
+		}
+		if len(t.Sessions) > 0 {
+			sessionCost := s.computeTaskSessionCost(t.Sessions)
+			switch v {
+			case "in-progress":
+				if t.CostAtEnd > 0 {
+					t.CostAtStart = sessionCost
+					t.CostAtEnd = 0
+					t.Cost = 0
+				} else if t.CostAtStart == 0 {
+					t.CostAtStart = sessionCost
+				}
+			case "done", "review":
+				t.CostAtEnd = sessionCost
+				t.Cost = t.CostAtEnd - t.CostAtStart
+				if t.Cost < 0 {
+					t.Cost = 0
+				}
+			}
 		}
 	}
 	if v, ok := req["title"].(string); ok && v != t.Title {
