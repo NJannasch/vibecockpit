@@ -174,10 +174,20 @@ func (s *Server) toolDefinitions() []map[string]any {
 		},
 		{
 			"name":        "get_inventory",
-			"description": "Get tool inventory: installed AI tools, models in use, MCP servers, instruction files (CLAUDE.md, .cursorrules, etc.), skills, memories, IDE extensions, and sensitive files detected.",
+			"description": "Get tool inventory. Filter by type and/or search query to avoid large responses.",
 			"inputSchema": map[string]any{
-				"type":       "object",
-				"properties": map[string]any{},
+				"type": "object",
+				"properties": map[string]any{
+					"type": map[string]any{
+						"type":        "string",
+						"description": "Filter by category: tools, models, mcpServers, instructionFiles, skills, memories, sensitiveFiles, ideExtensions, scanLog.",
+						"enum":        []string{"tools", "models", "mcpServers", "instructionFiles", "skills", "memories", "sensitiveFiles", "ideExtensions", "scanLog"},
+					},
+					"query": map[string]any{
+						"type":        "string",
+						"description": "Fuzzy search across names, paths, sources. Case-insensitive.",
+					},
+				},
 			},
 		},
 		{
@@ -420,9 +430,100 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		count = len(all)
 
 	case "get_inventory":
+		var args struct {
+			Type  string `json:"type"`
+			Query string `json:"query"`
+		}
+		if len(call.Arguments) > 0 {
+			_ = json.Unmarshal(call.Arguments, &args)
+		}
 		all := s.allSessions()
-		result = inventory.Scan(all, s.workspaceDir)
-		count = 1
+		inv := inventory.Scan(all, s.workspaceDir)
+		q := strings.ToLower(args.Query)
+		matchStr := func(fields ...string) bool {
+			if q == "" {
+				return true
+			}
+			for _, f := range fields {
+				if strings.Contains(strings.ToLower(f), q) {
+					return true
+				}
+			}
+			return false
+		}
+		if args.Type != "" || args.Query != "" {
+			filtered := &inventory.Inventory{ScanDurationMs: inv.ScanDurationMs, ScannedAt: inv.ScannedAt}
+			if args.Type == "" || args.Type == "tools" {
+				for _, t := range inv.Tools {
+					if matchStr(t.Name, t.ID, t.BinaryPath) {
+						filtered.Tools = append(filtered.Tools, t)
+					}
+				}
+			}
+			if args.Type == "" || args.Type == "models" {
+				for _, m := range inv.Models {
+					if matchStr(m.Model, m.Provider) {
+						filtered.Models = append(filtered.Models, m)
+					}
+				}
+			}
+			if args.Type == "" || args.Type == "mcpServers" {
+				for _, m := range inv.MCPServers {
+					if matchStr(m.Name, m.Command, m.Source, m.SourcePath, m.Scope) {
+						filtered.MCPServers = append(filtered.MCPServers, m)
+					}
+				}
+			}
+			if args.Type == "" || args.Type == "instructionFiles" {
+				for _, f := range inv.InstructionFiles {
+					if matchStr(f.Type, f.Path, f.ProjectName) {
+						filtered.InstructionFiles = append(filtered.InstructionFiles, f)
+					}
+				}
+			}
+			if args.Type == "" || args.Type == "skills" {
+				for _, sk := range inv.Skills {
+					if matchStr(sk.Name, sk.Source, sk.Path) {
+						filtered.Skills = append(filtered.Skills, sk)
+					}
+				}
+			}
+			if args.Type == "" || args.Type == "memories" {
+				for _, m := range inv.Memories {
+					if matchStr(m.Name, m.Description, m.Path, m.ProjectName) {
+						filtered.Memories = append(filtered.Memories, m)
+					}
+				}
+			}
+			if args.Type == "" || args.Type == "sensitiveFiles" {
+				for _, sf := range inv.SensitiveFiles {
+					if matchStr(sf.Name, sf.Path, sf.ProjectName, sf.Risk) {
+						filtered.SensitiveFiles = append(filtered.SensitiveFiles, sf)
+					}
+				}
+			}
+			if args.Type == "" || args.Type == "ideExtensions" {
+				for _, e := range inv.IDEExtensions {
+					if matchStr(e.Name, e.ID, e.Publisher, e.IDE) {
+						filtered.IDEExtensions = append(filtered.IDEExtensions, e)
+					}
+				}
+			}
+			if args.Type == "scanLog" {
+				for _, e := range inv.ScanLog {
+					if matchStr(e.Path, e.Type) {
+						filtered.ScanLog = append(filtered.ScanLog, e)
+					}
+				}
+			}
+			result = filtered
+			count = len(filtered.Tools) + len(filtered.Models) + len(filtered.MCPServers) +
+				len(filtered.InstructionFiles) + len(filtered.Skills) + len(filtered.Memories) +
+				len(filtered.SensitiveFiles) + len(filtered.IDEExtensions)
+		} else {
+			result = inv
+			count = 1
+		}
 
 	case "rescan":
 		var args struct {

@@ -10,6 +10,13 @@
   let expandedTools = $state(new Set());
   let auditOpen = $state(false);
   let auditFilter = $state("");
+  let invSearch = $state("");
+
+  function invMatch(...fields) {
+    if (!invSearch) return true;
+    const q = invSearch.toLowerCase();
+    return fields.some(f => f && f.toLowerCase().includes(q));
+  }
   let fileViewer = $state({ open: false, path: "", content: "", loading: false, error: null });
 
   onMount(async () => {
@@ -65,14 +72,20 @@
     return p || "";
   }
 
-  let installedTools = $derived(inventory?.tools?.filter(t => t.installed) ?? []);
-  let notInstalledTools = $derived(inventory?.tools?.filter(t => !t.installed) ?? []);
-  let mcpCount = $derived(inventory?.mcpServers?.length ?? 0);
-  let instrCount = $derived(inventory?.instructionFiles?.length ?? 0);
-  let skillCount = $derived(inventory?.skills?.length ?? 0);
-  let memoryCount = $derived(inventory?.memories?.length ?? 0);
-  let sensitiveCount = $derived(inventory?.sensitiveFiles?.length ?? 0);
-  let extCount = $derived(inventory?.ideExtensions?.length ?? 0);
+  let installedTools = $derived((inventory?.tools ?? []).filter(t => t.installed && invMatch(t.name, t.id, t.binaryPath)));
+  let notInstalledTools = $derived((inventory?.tools ?? []).filter(t => !t.installed && invMatch(t.name, t.id)));
+  let filteredMcp = $derived((inventory?.mcpServers ?? []).filter(m => invMatch(m.name, m.command, m.source, m.sourcePath, m.scope)));
+  let filteredInstr = $derived((inventory?.instructionFiles ?? []).filter(f => invMatch(f.type, f.path, f.projectName)));
+  let filteredSkills = $derived((inventory?.skills ?? []).filter(s => invMatch(s.name, s.source, s.path)));
+  let filteredMemories = $derived((inventory?.memories ?? []).filter(m => invMatch(m.name, m.description, m.path, m.projectName)));
+  let filteredSensitive = $derived((inventory?.sensitiveFiles ?? []).filter(f => invMatch(f.name, f.path, f.projectName)));
+  let filteredExt = $derived((inventory?.ideExtensions ?? []).filter(e => invMatch(e.name, e.id, e.publisher, e.ide)));
+  let mcpCount = $derived(filteredMcp.length);
+  let instrCount = $derived(filteredInstr.length);
+  let skillCount = $derived(filteredSkills.length);
+  let memoryCount = $derived(filteredMemories.length);
+  let sensitiveCount = $derived(filteredSensitive.length);
+  let extCount = $derived(filteredExt.length);
 
   let filteredScanLog = $derived.by(() => {
     const log = inventory?.scanLog ?? [];
@@ -82,9 +95,9 @@
   });
 
   let instructionsByProject = $derived.by(() => {
-    if (!inventory?.instructionFiles?.length) return {};
+    if (!filteredInstr.length) return {};
     const groups = {};
-    for (const f of inventory.instructionFiles) {
+    for (const f of filteredInstr) {
       const key = f.projectName || "unknown";
       if (!groups[key]) groups[key] = [];
       groups[key].push(f);
@@ -93,9 +106,9 @@
   });
 
   let memoriesByProject = $derived.by(() => {
-    if (!inventory?.memories?.length) return {};
+    if (!filteredMemories.length) return {};
     const groups = {};
-    for (const m of inventory.memories) {
+    for (const m of filteredMemories) {
       const key = m.projectName || "unknown";
       if (!groups[key]) groups[key] = [];
       groups[key].push(m);
@@ -104,9 +117,9 @@
   });
 
   let extByIDE = $derived.by(() => {
-    if (!inventory?.ideExtensions?.length) return {};
+    if (!filteredExt.length) return {};
     const groups = {};
-    for (const e of inventory.ideExtensions) {
+    for (const e of filteredExt) {
       const key = e.ide || "unknown";
       if (!groups[key]) groups[key] = [];
       groups[key].push(e);
@@ -244,6 +257,7 @@
       <p class="inv-subtitle">Your vibe coding setup at a glance</p>
     </div>
     <div class="inv-header-right">
+      <input type="text" class="inv-search" placeholder="Search inventory..." bind:value={invSearch} />
       {#if inventory?.scanDurationMs}
         <span class="scan-time">{inventory.scanDurationMs}ms</span>
       {/if}
@@ -300,7 +314,7 @@
         <span class="sensitive-hint">These files may contain secrets — ensure they are in <code>.gitignore</code></span>
       </summary>
       <div class="sensitive-list">
-        {#each inventory.sensitiveFiles as f, i (i)}
+        {#each filteredSensitive as f, i (i)}
           <div class="sensitive-row">
             <code class="sensitive-name">{f.name}</code>
             <span class="sensitive-project">{f.projectName}</span>
@@ -411,7 +425,7 @@
         <div class="empty">No MCP servers detected. Configure servers in your tool settings or project <code>.mcp.json</code>.</div>
       {:else}
         <div class="mcp-list">
-          {#each inventory.mcpServers as s (s.name)}
+          {#each filteredMcp as s, si (s.name + '-' + s.sourcePath + '-' + si)}
             <div class="mcp-card">
               <div class="mcp-top">
                 <span class="mcp-name">{s.name}</span>
@@ -466,7 +480,7 @@
           <table class="inv-table">
             <thead><tr><th>Name</th><th>Type</th><th>Source</th><th></th></tr></thead>
             <tbody>
-              {#each inventory.skills as s (s.name)}
+              {#each filteredSkills as s, si (s.name + '-' + s.path + '-' + si)}
                 <tr>
                   <td><code>/{s.name}</code></td>
                   <td><span class="type-badge {s.type}">{s.type}</span></td>
@@ -581,6 +595,8 @@
   .inv-header h2 { margin: 0 0 .2rem; }
   .inv-subtitle { font-size: .82rem; color: var(--text-secondary); margin: 0; }
   .inv-header-right { display: flex; align-items: center; gap: .7rem; }
+  .inv-search { font-size: .82rem; padding: .35rem .6rem; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: inherit; width: 12rem; }
   .scan-time { font-size: .72rem; color: var(--text-tertiary, var(--text-secondary)); font-variant-numeric: tabular-nums; }
   .inv-error { color: var(--danger, #ef4444); padding: 1rem; background: var(--surface); border-radius: 8px; }
   .inv-loading { text-align: center; padding: 3rem; color: var(--text-secondary); }
