@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { fetchBoards, fetchBoard, createBoard, addBoardTask, updateBoardTask, deleteBoardTask, deleteBoard, moveTaskToBoard, fetchConfig, fetchSessions } from "../lib/api.js";
+  import { fetchBoards, fetchBoard, createBoard, addBoardTask, updateBoardTask, deleteBoardTask, deleteBoard, moveTaskToBoard, runBoardTask, fetchConfig, fetchSessions } from "../lib/api.js";
   import { relativeTime, providerColors } from "../lib/utils.js";
 
   let { sessions = [] } = $props();
@@ -30,6 +30,7 @@
   let newTaskTool = $state("");
   let newTaskModel = $state("");
 
+  let agentRuns = $state({});
   let dragTask = $state(null);
   let dragOverCol = $state(null);
   let showArchived = $state(false);
@@ -171,6 +172,19 @@
     } catch { /* ignore */ }
   }
 
+  let runToast = $state("");
+
+  async function runTask(taskId) {
+    if (!activeBoard) return;
+    try {
+      await runBoardTask(activeBoard.name, taskId);
+      runToast = `Agent spawned for "${taskId}"`;
+      selectedTask = null;
+      setTimeout(() => { runToast = ""; }, 4000);
+      setTimeout(() => { selectBoard(activeBoard.name); loadAgentRuns(); }, 2000);
+    } catch { runToast = "Failed to spawn agent"; setTimeout(() => { runToast = ""; }, 4000); }
+  }
+
   async function archiveTask(taskId) {
     if (!activeBoard) return;
     try {
@@ -253,9 +267,35 @@
   let totalCostAll = $derived(sessions.reduce((sum, s) => sum + (s.estCostUsd || 0), 0));
   let providerCount = $derived([...new Set(sessions.map(s => s.provider))].length);
 
-  onMount(() => { load(); loadConfig(); });
+  async function loadAgentRuns() {
+    try {
+      const r = await fetch("/api/agents");
+      if (r.ok) {
+        const runs = await r.json();
+        const map = {};
+        for (const run of runs) {
+          if (run.status === "running") map[run.taskId] = run;
+        }
+        agentRuns = map;
+      }
+    } catch { /* ignore */ }
+  }
+
+  let agentPoll;
+  onMount(() => {
+    load();
+    loadConfig();
+    loadAgentRuns();
+    agentPoll = setInterval(loadAgentRuns, 5000);
+  });
+
+  import { onDestroy } from "svelte";
+  onDestroy(() => { clearInterval(agentPoll); });
 </script>
 
+{#if runToast}
+  <div class="run-toast">{runToast}</div>
+{/if}
 <div class="board-page">
   {#if sessions.length > 0}
   <div class="status-bar">
@@ -373,7 +413,10 @@
                       <span class="kanban-cost" title="Estimated API cost">~${task.cost.toFixed(2)}</span>
                     {/if}
                   </div>
-                  <div class="kanban-card-title">{task.title}</div>
+                  <div class="kanban-card-title">
+                    {#if agentRuns[task.id]}<span class="kanban-agent-pulse" title="Agent running · {agentRuns[task.id].elapsed}"></span>{/if}
+                    {task.title}
+                  </div>
                   {#if task.createdBy}
                     <span class="kanban-origin" class:kanban-origin-agent={task.createdBy !== "human"}>{task.createdBy === "human" ? "manual" : task.createdBy}</span>
                   {/if}
@@ -504,16 +547,25 @@
         onchange={(e) => updateField(selectedTask.id, "description", e.target.value)}
         placeholder="Task details..."></textarea>
     </div>
-    {#if selectedTask.acceptance?.length}
-      <div class="field">
-        <label for="acceptance-criteria">Acceptance criteria</label>
-        <ul id="acceptance-criteria" class="task-detail-accept">
-          {#each selectedTask.acceptance as a, i (i)}
-            <li>{a}</li>
-          {/each}
-        </ul>
+    <div class="field">
+      <label for="edit-acceptance">Acceptance criteria <span style="font-weight:400;color:var(--text-muted)">(one per line, prefix with run: for automated checks)</span></label>
+      <textarea id="edit-acceptance" rows="3" value={(selectedTask.acceptance || []).join("\n")}
+        onchange={(e) => updateField(selectedTask.id, "acceptance", e.target.value.split("\n").filter(l => l.trim()))}
+        placeholder="run: make check&#10;run: go test -race ./...&#10;Login form works correctly"></textarea>
+    </div>
+    <div style="display:flex;gap:.6rem">
+      <div class="field" style="flex:1">
+        <label for="edit-maxiter">Max iterations (ralph loop)</label>
+        <input id="edit-maxiter" type="number" min="1" max="10" value={selectedTask.maxIterations || 1}
+          onchange={(e) => updateField(selectedTask.id, "maxIterations", parseInt(e.target.value) || 1)} />
       </div>
-    {/if}
+      {#if selectedTask.iterations > 0}
+        <div class="field" style="flex:1">
+          <span style="font-size:.78rem;font-weight:500;color:var(--text-secondary)">Current iteration</span>
+          <span style="font-size:.9rem;font-weight:600;padding:.4rem 0;display:block">{selectedTask.iterations} / {selectedTask.maxIterations || 1}</span>
+        </div>
+      {/if}
+    </div>
     <div class="task-modal-meta">
       <div class="task-meta-timestamps">
         {#if selectedTask.createdAt}
@@ -573,6 +625,9 @@
             <option value={b.name}>{b.name}</option>
           {/each}
         </select>
+      {/if}
+      {#if selectedTask.status === "backlog" && selectedTask.tool}
+        <button class="btn btn-sm btn-primary" onclick={() => runTask(selectedTask.id)} title="Spawn agent on this task">&#9654; Run</button>
       {/if}
       <span style="flex:1"></span>
       {#if selectedTask.status === "archived"}
@@ -746,7 +801,12 @@
   .kanban-card-inner { display: block; width: 100%; text-align: left; padding: .5rem .6rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; color: var(--text); transition: border-color .15s, box-shadow .15s; }
   .kanban-card-inner:hover { border-color: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
   .kanban-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: .2rem; }
-  .kanban-card-title { font-size: .82rem; font-weight: 500; line-height: 1.3; }
+  .kanban-card-title { font-size: .82rem; font-weight: 500; line-height: 1.3; display: flex; align-items: center; gap: .3rem; }
+  .kanban-agent-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: agent-pulse 2s infinite; flex-shrink: 0; }
+  @keyframes agent-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .run-toast { position: fixed; top: 1rem; right: 1rem; background: var(--success); color: #fff; padding: .5rem 1rem;
+    border-radius: var(--radius-sm); font-size: .82rem; font-weight: 500; z-index: 200; animation: toast-in .3s ease; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
   .kanban-priority { font-size: .65rem; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
   .kanban-cost { font-size: .7rem; font-weight: 600; color: var(--warning, #f59e0b); }
   .kanban-card-meta { display: flex; gap: .4rem; align-items: center; margin-top: .3rem; font-size: .7rem; color: var(--text-secondary); }
@@ -763,8 +823,6 @@
   .task-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .8rem; }
   .task-modal-id { font-size: .75rem; color: var(--text-muted); }
   .task-detail-desc { font-size: .82rem; color: var(--text-secondary); line-height: 1.5; margin: .3rem 0 0; white-space: pre-wrap; }
-  .task-detail-accept { font-size: .82rem; color: var(--text-secondary); margin: .3rem 0 0; padding-left: 1.2rem; }
-  .task-detail-accept li { margin-bottom: .2rem; }
   .task-modal-meta { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
   .task-meta-row { display: flex; gap: .6rem; align-items: center; margin-bottom: .3rem; font-size: .8rem; }
   .task-meta-label { font-size: .7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; min-width: 5.5rem; flex-shrink: 0; }

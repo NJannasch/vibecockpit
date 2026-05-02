@@ -12,10 +12,6 @@
   }
   let boards = $state([]);
 
-  onMount(async () => {
-    try { boards = await fetchBoards(); } catch { /* optional */ }
-  });
-
   let dashboardData = $derived.by(() => {
     const data = computeDashboardData(sessions);
     data.providers.sort((a, b) => {
@@ -43,6 +39,43 @@
   let activeSessions = $derived(sessions.filter(s => s.isActive));
   let totalEstCost = $derived(sessions.reduce((sum, s) => sum + (s.estCostUsd || 0), 0));
   let inProgressTasks = $derived(boards.flatMap(b => (b.tasks || []).filter(t => t.status === "in-progress")));
+
+  let agentRuns = $state([]);
+  let agentLog = $state({ open: false, taskId: "", stdout: "", status: "", recent: "" });
+
+  async function loadAgents() {
+    try {
+      const r = await fetch("/api/agents");
+      if (r.ok) agentRuns = await r.json();
+    } catch { /* ignore */ }
+  }
+
+  async function stopAgent(taskId) {
+    try {
+      await fetch(`/api/agents/${taskId}/stop`, { method: "POST" });
+      setTimeout(loadAgents, 1000);
+    } catch { /* ignore */ }
+  }
+
+  async function viewLog(taskId) {
+    try {
+      const r = await fetch(`/api/agents/${encodeURIComponent(taskId)}/log`);
+      if (r.ok) {
+        const d = await r.json();
+        agentLog = { open: true, taskId, ...d };
+      }
+    } catch { /* ignore */ }
+  }
+
+  let agentPollTimer;
+  onMount(async () => {
+    try { boards = await fetchBoards(); } catch { /* optional */ }
+    loadAgents();
+    agentPollTimer = setInterval(loadAgents, 5000);
+  });
+
+  import { onDestroy } from "svelte";
+  onDestroy(() => { clearInterval(agentPollTimer); });
 </script>
 
 <div class="dash">
@@ -65,6 +98,56 @@
       <span class="metric-label">est. cost</span>
     </div>
   </div>
+
+  <!-- Running agents -->
+  {#if agentRuns.length > 0}
+    <div class="agents-panel" class:agents-active={agentRuns.some(r => r.status === "running")}>
+      <h3 class="agents-title">Agents ({agentRuns.filter(r => r.status === "running").length} running)</h3>
+      {#each agentRuns as run (run.taskId)}
+        <div class="agent-row">
+          {#if run.status === "running"}
+            <span class="agent-pulse"></span>
+          {:else if run.status === "completed"}
+            <span class="agent-dot agent-done">&#10003;</span>
+          {:else}
+            <span class="agent-dot agent-fail">&#10005;</span>
+          {/if}
+          <div class="agent-info">
+            <span class="agent-task">{run.taskId}</span>
+            <span class="agent-meta">{run.tool}{run.model ? " · " + run.model : ""} · {run.status === "running" ? run.elapsed : run.status}</span>
+          </div>
+          {#if run.logPath}
+            <button class="btn btn-sm" onclick={() => viewLog(run.taskId)} title="View output">Log</button>
+          {/if}
+          {#if run.status === "running"}
+            <button class="btn btn-sm btn-danger" onclick={() => stopAgent(run.taskId)} title="Stop agent">Stop</button>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  {#if agentLog.open}
+    <div class="agent-log-panel">
+      <div class="agent-log-header">
+        <span>Agent: {agentLog.taskId}</span>
+        <div>
+          <button class="btn btn-sm" onclick={() => viewLog(agentLog.taskId)}>Refresh</button>
+          <button class="btn btn-sm" onclick={() => { agentLog = { open: false, taskId: "", stdout: "", status: "", recent: "" }; }}>Close</button>
+        </div>
+      </div>
+      {#if agentLog.status}
+        <div class="agent-log-section">STATUS.md</div>
+        <pre class="agent-log-content">{agentLog.status}</pre>
+      {/if}
+      {#if agentLog.recent}
+        <div class="agent-log-section">Recent activity</div>
+        <pre class="agent-log-content">{agentLog.recent}</pre>
+      {/if}
+      <div class="agent-log-section">Stdout</div>
+      <pre class="agent-log-content">{agentLog.stdout || "(empty)"}</pre>
+    </div>
+  {/if}
 
   <!-- Two-column layout -->
   <div class="dash-grid">
@@ -247,6 +330,25 @@
   .mcp-hint-content span { color: var(--text-secondary); }
   .mcp-hint-content code { font-size: .75rem; background: var(--surface); padding: .1rem .3rem; border-radius: 3px; }
   .mcp-hint-actions { display: flex; gap: .4rem; flex-shrink: 0; }
+
+  /* Agents panel */
+  .agents-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; margin-bottom: 1rem; }
+  .agents-panel.agents-active { border-color: var(--success); }
+  .agents-title { font-size: .85rem; font-weight: 600; color: var(--success); margin: 0 0 .5rem; }
+  .agent-row { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; border-bottom: 1px solid var(--border); }
+  .agent-row:last-child { border-bottom: none; }
+  .agent-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; flex-shrink: 0; }
+  .agent-dot { width: 16px; height: 16px; font-size: .7rem; text-align: center; line-height: 16px; border-radius: 50%; flex-shrink: 0; }
+  .agent-done { background: var(--success-dim, rgba(22,163,98,.15)); color: var(--success); }
+  .agent-fail { background: var(--danger-dim, rgba(239,68,68,.15)); color: var(--danger); }
+  .agent-info { flex: 1; min-width: 0; }
+  .agent-task { display: block; font-size: .82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-meta { display: block; font-size: .7rem; color: var(--text-muted); }
+  .agent-log-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 1rem; }
+  .agent-log-header { display: flex; align-items: center; justify-content: space-between; padding: .5rem .8rem; border-bottom: 1px solid var(--border); font-size: .82rem; font-weight: 600; }
+  .agent-log-header div { display: flex; gap: .3rem; }
+  .agent-log-section { font-size: .72rem; font-weight: 600; color: var(--text-secondary); padding: .3rem .8rem; border-bottom: 1px solid var(--border); }
+  .agent-log-content { font-size: .72rem; padding: .6rem .8rem; margin: 0; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: var(--text-secondary); background: var(--bg); }
 
   @media (max-width: 700px) {
     .dash-grid { grid-template-columns: 1fr; }

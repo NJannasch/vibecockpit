@@ -332,6 +332,15 @@ func (s *Server) toolDefinitions() []map[string]any {
 						"type":        "string",
 						"description": "Model to use.",
 					},
+					"acceptance": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "Acceptance criteria. Prefix with 'run:' for automated checks (e.g. 'run: make check').",
+					},
+					"max_iterations": map[string]any{
+						"type":        "integer",
+						"description": "Max auto-retry iterations for the ralph loop. Default: 1 (no retry).",
+					},
 				},
 				"required": []string{"board", "title"},
 			},
@@ -761,12 +770,14 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 
 	case "create_task":
 		var args struct {
-			Board       string `json:"board"`
-			Title       string `json:"title"`
-			Priority    string `json:"priority"`
-			Description string `json:"description"`
-			Tool        string `json:"tool"`
-			Model       string `json:"model"`
+			Board         string   `json:"board"`
+			Title         string   `json:"title"`
+			Priority      string   `json:"priority"`
+			Description   string   `json:"description"`
+			Tool          string   `json:"tool"`
+			Model         string   `json:"model"`
+			Acceptance    []string `json:"acceptance"`
+			MaxIterations int      `json:"max_iterations"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
 			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
@@ -786,6 +797,12 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 		t.Tool = args.Tool
 		t.Model = args.Model
 		t.CreatedBy = "mcp-agent"
+		if len(args.Acceptance) > 0 {
+			t.Acceptance = args.Acceptance
+		}
+		if args.MaxIterations > 0 {
+			t.MaxIterations = args.MaxIterations
+		}
 		if err := b.Save(); err != nil {
 			writeError(w, req.ID, -32602, "Failed to save: "+err.Error())
 			return

@@ -786,7 +786,7 @@
   <!-- Tooltip -->
   {#if tooltip}
     <div class="costs-tooltip" style="left:{tooltip.x}px;top:{tooltip.y}px">
-      {@html tooltip.content}
+      {@html tooltip.content}<!-- eslint-disable-line svelte/no-at-html-tags -->
     </div>
   {/if}
 </div>

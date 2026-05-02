@@ -48,6 +48,9 @@ type Task struct {
 	UpdatedAt   string         `yaml:"updated_at,omitempty" json:"updatedAt,omitempty"`
 	History     []HistoryEntry `yaml:"history,omitempty" json:"history,omitempty"`
 
+	MaxIterations int      `yaml:"max_iterations,omitempty" json:"maxIterations,omitempty"`
+	Iterations    int      `yaml:"iterations,omitempty" json:"iterations,omitempty"`
+
 	// Future fields — parsed but not acted on yet
 	MCP          []string `yaml:"mcp,omitempty" json:"mcp,omitempty"`
 	Instructions []any    `yaml:"instructions,omitempty" json:"instructions,omitempty"`
