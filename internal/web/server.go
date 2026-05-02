@@ -1024,7 +1024,8 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(t.Sessions) > 0 {
 			sessionCost := s.computeTaskSessionCost(t.Sessions)
-			if v == "in-progress" {
+			switch v {
+			case "in-progress":
 				if t.CostAtEnd > 0 {
 					t.CostAtStart = sessionCost
 					t.CostAtEnd = 0
@@ -1032,7 +1033,7 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 				} else if t.CostAtStart == 0 {
 					t.CostAtStart = sessionCost
 				}
-			} else if v == "done" || v == "review" {
+			case "done", "review":
 				t.CostAtEnd = sessionCost
 				t.Cost = t.CostAtEnd - t.CostAtStart
 				if t.Cost < 0 {
