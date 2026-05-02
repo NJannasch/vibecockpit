@@ -21,6 +21,7 @@ import (
 	"vibecockpit/internal/audit"
 	"vibecockpit/internal/board"
 	"vibecockpit/internal/config"
+	"vibecockpit/internal/runner"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/launcher"
@@ -144,6 +145,10 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("POST /api/boards/{name}/tasks/{id}/move", s.handleMoveTaskToBoard)
 	mux.HandleFunc("DELETE /api/boards/{name}", s.handleDeleteBoard)
 	mux.HandleFunc("DELETE /api/boards/{name}/tasks/{id}", s.handleDeleteTask)
+	mux.HandleFunc("POST /api/boards/{name}/tasks/{id}/run", s.handleRunTask)
+	mux.HandleFunc("GET /api/agents", s.handleGetAgents)
+	mux.HandleFunc("POST /api/agents/{taskId}/stop", s.handleStopAgent)
+	mux.HandleFunc("GET /api/agents/{taskId}/log", s.handleAgentLog)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
@@ -1036,6 +1041,20 @@ func (s *server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	if v, ok := req["session_id"].(string); ok && v != "" {
 		t.LinkSession(v, by)
 	}
+	if v, ok := req["acceptance"].([]any); ok {
+		var acc []string
+		for _, a := range v {
+			if s, ok := a.(string); ok {
+				acc = append(acc, s)
+			}
+		}
+		t.Acceptance = acc
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if v, ok := req["maxIterations"].(float64); ok {
+		t.MaxIterations = int(v)
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
 	if err := b.Save(); err != nil {
 		jsonError(w, err.Error(), 500)
 		return
@@ -1089,6 +1108,51 @@ func (s *server) handleDeleteBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleRunTask(w http.ResponseWriter, r *http.Request) {
+	boardName := r.PathValue("name")
+	taskID := r.PathValue("id")
+
+	go func() {
+		opts := runner.RunOpts{TaskID: taskID, BoardName: boardName, Headless: true}
+		if err := runner.Run(s.cfg, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "Agent run error: %v\n", err)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "spawned", "task": taskID})
+}
+
+func (s *server) handleGetAgents(w http.ResponseWriter, _ *http.Request) {
+	runs := runner.GetActiveRuns()
+	if runs == nil {
+		runs = []runner.AgentRun{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(runs)
+}
+
+func (s *server) handleStopAgent(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskId")
+	if err := runner.StopAgent(taskID); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleAgentLog(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskId")
+	logResp, err := runner.GetAgentLog(taskID)
+	if err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(logResp)
 }
 
 func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {

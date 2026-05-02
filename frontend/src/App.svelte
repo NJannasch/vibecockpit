@@ -21,10 +21,11 @@
   import CostsDashboard from "./components/CostsDashboard.svelte";
   import ToolInventory from "./components/ToolInventory.svelte";
   import BoardView from "./components/BoardView.svelte";
+  import AgentMonitor from "./components/AgentMonitor.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
 
-  const validPages = ["dashboard", "planner", "sessions", "costs", "inventory", "settings"];
+  const validPages = ["dashboard", "planner", "agents", "sessions", "costs", "inventory", "settings"];
   const redirects = { stats: "dashboard", security: "inventory", mcp: "settings", boards: "planner" };
   function pageFromPath() {
     const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
@@ -702,6 +703,10 @@
       <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
       <span class="sidebar-label">Planner</span>
     </button>
+    <button class="sidebar-btn" class:active={page === "agents"} onclick={() => navigateTo("agents")}>
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+      <span class="sidebar-label">Agents</span>
+    </button>
     <button class="sidebar-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>
       <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       <span class="sidebar-label">Sessions</span>
@@ -1059,6 +1064,14 @@
   </div>
   <main>
     <BoardView sessions={sessionList} />
+  </main>
+{:else if page === "agents"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Agents</h1>
+    <span class="page-bar-subtitle">Monitor spawned agents</span>
+  </div>
+  <main>
+    <AgentMonitor />
   </main>
 {:else if page === "costs"}
   <div class="page-bar">

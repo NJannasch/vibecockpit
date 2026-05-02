@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { fetchBoards, fetchBoard, createBoard, addBoardTask, updateBoardTask, deleteBoardTask, deleteBoard, moveTaskToBoard, fetchConfig, fetchSessions } from "../lib/api.js";
+  import { fetchBoards, fetchBoard, createBoard, addBoardTask, updateBoardTask, deleteBoardTask, deleteBoard, moveTaskToBoard, runBoardTask, fetchConfig, fetchSessions } from "../lib/api.js";
   import { relativeTime, providerColors } from "../lib/utils.js";
 
   let { sessions = [] } = $props();
@@ -168,6 +168,15 @@
       await deleteBoard(name);
       if (activeBoard?.name === name) activeBoard = null;
       await load();
+    } catch { /* ignore */ }
+  }
+
+  async function runTask(taskId) {
+    if (!activeBoard) return;
+    try {
+      await runBoardTask(activeBoard.name, taskId);
+      selectedTask = null;
+      setTimeout(() => selectBoard(activeBoard.name), 2000);
     } catch { /* ignore */ }
   }
 
@@ -504,16 +513,25 @@
         onchange={(e) => updateField(selectedTask.id, "description", e.target.value)}
         placeholder="Task details..."></textarea>
     </div>
-    {#if selectedTask.acceptance?.length}
-      <div class="field">
-        <label for="acceptance-criteria">Acceptance criteria</label>
-        <ul id="acceptance-criteria" class="task-detail-accept">
-          {#each selectedTask.acceptance as a, i (i)}
-            <li>{a}</li>
-          {/each}
-        </ul>
+    <div class="field">
+      <label for="edit-acceptance">Acceptance criteria <span style="font-weight:400;color:var(--text-muted)">(one per line, prefix with run: for automated checks)</span></label>
+      <textarea id="edit-acceptance" rows="3" value={(selectedTask.acceptance || []).join("\n")}
+        onchange={(e) => updateField(selectedTask.id, "acceptance", e.target.value.split("\n").filter(l => l.trim()))}
+        placeholder="run: make check&#10;run: go test -race ./...&#10;Login form works correctly"></textarea>
+    </div>
+    <div style="display:flex;gap:.6rem">
+      <div class="field" style="flex:1">
+        <label for="edit-maxiter">Max iterations (ralph loop)</label>
+        <input id="edit-maxiter" type="number" min="1" max="10" value={selectedTask.maxIterations || 1}
+          onchange={(e) => updateField(selectedTask.id, "maxIterations", parseInt(e.target.value) || 1)} />
       </div>
-    {/if}
+      {#if selectedTask.iterations > 0}
+        <div class="field" style="flex:1">
+          <label>Current iteration</label>
+          <span style="font-size:.9rem;font-weight:600;padding:.4rem 0;display:block">{selectedTask.iterations} / {selectedTask.maxIterations || 1}</span>
+        </div>
+      {/if}
+    </div>
     <div class="task-modal-meta">
       <div class="task-meta-timestamps">
         {#if selectedTask.createdAt}
@@ -573,6 +591,9 @@
             <option value={b.name}>{b.name}</option>
           {/each}
         </select>
+      {/if}
+      {#if selectedTask.status === "backlog" && selectedTask.tool}
+        <button class="btn btn-sm btn-primary" onclick={() => runTask(selectedTask.id)} title="Spawn agent on this task">&#9654; Run</button>
       {/if}
       <span style="flex:1"></span>
       {#if selectedTask.status === "archived"}
@@ -765,6 +786,8 @@
   .task-detail-desc { font-size: .82rem; color: var(--text-secondary); line-height: 1.5; margin: .3rem 0 0; white-space: pre-wrap; }
   .task-detail-accept { font-size: .82rem; color: var(--text-secondary); margin: .3rem 0 0; padding-left: 1.2rem; }
   .task-detail-accept li { margin-bottom: .2rem; }
+  .acceptance-auto { font-family: monospace; font-size: .78rem; color: var(--primary); }
+  .task-meta-iterations { font-size: .78rem; color: var(--text-secondary); margin-bottom: .4rem; padding: .3rem .5rem; background: var(--bg); border-radius: var(--radius-sm); }
   .task-modal-meta { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
   .task-meta-row { display: flex; gap: .6rem; align-items: center; margin-bottom: .3rem; font-size: .8rem; }
   .task-meta-label { font-size: .7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; min-width: 5.5rem; flex-shrink: 0; }

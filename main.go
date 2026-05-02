@@ -12,6 +12,7 @@ import (
 
 	"vibecockpit/internal/board"
 	"vibecockpit/internal/config"
+	"vibecockpit/internal/runner"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/demo"
 	"vibecockpit/internal/install"
@@ -135,6 +136,11 @@ func main() {
 
 	if args := flag.Args(); len(args) > 0 && args[0] == "board" {
 		runBoard(cfg, args[1:])
+		return
+	}
+
+	if args := flag.Args(); len(args) > 0 && args[0] == "run" {
+		runTask(cfg, args[1:])
 		return
 	}
 
@@ -405,6 +411,26 @@ func runBoard(cfg *config.Config, args []string) {
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown board command: %s\nCommands: list, show, create, add, move\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func runTask(cfg *config.Config, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: vibecockpit run <task-id> [--board <name>]")
+		os.Exit(1)
+	}
+	opts := runner.RunOpts{TaskID: args[0]}
+	for i := 1; i < len(args)-1; i++ {
+		if args[i] == "--board" {
+			opts.BoardName = args[i+1]
+		}
+		if args[i] == "--isolation" {
+			opts.Isolation = args[i+1]
+		}
+	}
+	if err := runner.Run(cfg, opts); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

@@ -185,6 +185,14 @@ export async function moveTaskToBoard(fromBoard, taskId, toBoard) {
   return res.json();
 }
 
+export async function runBoardTask(boardName, taskId) {
+  const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/tasks/${encodeURIComponent(taskId)}/run`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to run task: ${res.statusText}`);
+  return res.json();
+}
+
 export async function updateBoardTask(boardName, taskId, updates) {
   const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/tasks/${encodeURIComponent(taskId)}`, {
     method: "PUT",
