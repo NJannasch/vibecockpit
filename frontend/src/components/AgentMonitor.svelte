@@ -11,8 +11,38 @@
   let selectedAgent = $state(null);
   let agentLog = $state({ stdout: "", status: "", recent: "" });
   let logAutoRefresh = $state(true);
+  let searchQuery = $state("");
+  let filterSource = $state("all");
+  let filterStatus = $state("all");
   let pollTimer;
   let logTimer;
+
+  let filteredAgents = $derived(() => {
+    let list = [...agents];
+
+    list.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+
+    if (filterSource === "scheduled") list = list.filter(a => a.source === "scheduled");
+    else if (filterSource === "task") list = list.filter(a => a.source !== "scheduled");
+
+    if (filterStatus === "running") list = list.filter(a => a.status === "running");
+    else if (filterStatus === "completed") list = list.filter(a => a.status === "completed");
+    else if (filterStatus === "failed") list = list.filter(a => a.status === "failed" || a.status === "cancelled");
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(a =>
+        (a.taskTitle || "").toLowerCase().includes(q) ||
+        (a.taskId || "").toLowerCase().includes(q) ||
+        (a.boardName || "").toLowerCase().includes(q) ||
+        (a.project || "").toLowerCase().includes(q) ||
+        (a.tool || "").toLowerCase().includes(q) ||
+        (a.model || "").toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  });
 
   async function loadAgents() {
     try {
@@ -129,7 +159,33 @@
           {#if completedCount > 0}<span class="agent-stat agent-stat-done">{completedCount} completed</span>{/if}
           {#if failedCount > 0}<span class="agent-stat agent-stat-fail">{failedCount} failed</span>{/if}
         </div>
-        {#each agents as run (run.taskId)}
+
+        <input
+          class="agent-search"
+          type="text"
+          placeholder="Search runs..."
+          bind:value={searchQuery}
+        />
+
+        <div class="agent-filters">
+          <select class="agent-filter-select" bind:value={filterSource}>
+            <option value="all">All sources</option>
+            <option value="task">Task runs</option>
+            <option value="scheduled">Scheduled</option>
+          </select>
+          <select class="agent-filter-select" bind:value={filterStatus}>
+            <option value="all">All statuses</option>
+            <option value="running">Running</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+
+        {#if filteredAgents().length === 0}
+          <div class="agent-no-match">No matching runs</div>
+        {/if}
+
+        {#each filteredAgents() as run (run.taskId)}
           <button class="agent-item" class:agent-item-active={selectedAgent?.taskId === run.taskId} onclick={() => selectAgent(run)}>
             <div class="agent-item-status">
               {#if run.status === "running"}
@@ -303,6 +359,22 @@
   .agent-stat-running { color: var(--success); background: var(--success-dim, rgba(22,163,98,.1)); }
   .agent-stat-done { color: var(--text-muted); background: var(--bg); }
   .agent-stat-fail { color: var(--danger); background: var(--danger-dim, rgba(239,68,68,.1)); }
+
+  .agent-search {
+    width: 100%; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: .8rem; margin-bottom: .4rem; box-sizing: border-box; background: var(--surface);
+    color: var(--text);
+  }
+  .agent-search:focus { outline: none; border-color: var(--primary); }
+  .agent-search::placeholder { color: var(--text-muted); }
+
+  .agent-filters { display: flex; gap: .3rem; margin-bottom: .5rem; }
+  .agent-filter-select {
+    flex: 1; padding: .3rem .4rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: .72rem; background: var(--surface); color: var(--text); cursor: pointer;
+  }
+
+  .agent-no-match { text-align: center; padding: 1.5rem .5rem; font-size: .82rem; color: var(--text-muted); }
 
   .agent-item { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .5rem .6rem;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
