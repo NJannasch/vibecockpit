@@ -160,7 +160,7 @@ func (s *Scheduler) runJob(jobID string) {
 	jobCopy := *job
 	s.mu.Unlock()
 
-	taskID := "job-" + jobCopy.ID
+	taskID := fmt.Sprintf("job-%s-%d", jobCopy.ID, time.Now().UnixMilli())
 	opts := runner.RunOpts{
 		TaskID:    taskID,
 		BoardName: jobCopy.Board,
@@ -417,9 +417,17 @@ func (s *Scheduler) CancelJob(id string) error {
 	}
 	s.mu.Unlock()
 
-	taskID := "job-" + id
-	if err := runner.StopAgent(taskID); err != nil {
-		return err
+	prefix := "job-" + id
+	var stopped bool
+	for _, r := range runner.GetActiveRuns() {
+		if strings.HasPrefix(r.TaskID, prefix) && r.Status == "running" {
+			if err := runner.StopAgent(r.TaskID); err == nil {
+				stopped = true
+			}
+		}
+	}
+	if !stopped {
+		return fmt.Errorf("no running agent found for job %q", id)
 	}
 
 	s.mu.Lock()
@@ -440,11 +448,11 @@ func (s *Scheduler) IsRunning(id string) bool {
 }
 
 func (s *Scheduler) GetJobRuns(jobID string) []runner.AgentRun {
-	taskID := "job-" + jobID
+	prefix := "job-" + jobID
 	all := runner.GetActiveRuns()
 	var runs []runner.AgentRun
 	for _, r := range all {
-		if r.TaskID == taskID {
+		if strings.HasPrefix(r.TaskID, prefix) {
 			runs = append(runs, r)
 		}
 	}

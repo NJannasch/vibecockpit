@@ -1332,11 +1332,11 @@ func (s *server) handleGetJobs(w http.ResponseWriter, _ *http.Request) {
 	allRuns := runner.GetActiveRuns()
 	for i, j := range jobs {
 		out[i] = jobWithStats{Job: j}
-		taskPrefix := "job-" + j.ID
+		prefix := "job-" + j.ID
 		var total float64
 		var count int
 		for _, r := range allRuns {
-			if r.TaskID == taskPrefix {
+			if strings.HasPrefix(r.TaskID, prefix) {
 				count++
 				total += r.Cost
 			}

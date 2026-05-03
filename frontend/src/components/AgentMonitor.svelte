@@ -112,12 +112,18 @@
   }
 
   function jobIdFromTaskId(taskId) {
-    return taskId.startsWith("job-") ? taskId.slice(4) : null;
+    if (!taskId.startsWith("job-")) return null;
+    const parts = taskId.slice(4).split("-");
+    parts.pop();
+    return parts.join("-");
   }
 
   function siblingRuns(taskId) {
+    const jobId = jobIdFromTaskId(taskId);
+    if (!jobId) return [];
+    const prefix = "job-" + jobId;
     return agents
-      .filter(a => a.taskId === taskId || (a.source === "scheduled" && a.taskId.slice(4) === taskId.slice(4)))
+      .filter(a => a.source === "scheduled" && a.taskId.startsWith(prefix))
       .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
   }
 
@@ -126,8 +132,11 @@
     if (!jobId) { parentJob = null; return; }
     try {
       const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
-      if (r.ok) parentJob = await r.json();
-      else parentJob = null;
+      if (r.ok) {
+        parentJob = await r.json();
+      } else {
+        parentJob = null;
+      }
     } catch { parentJob = null; }
   }
 
