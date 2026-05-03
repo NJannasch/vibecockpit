@@ -20,6 +20,7 @@ import (
 
 	"vibecockpit/internal/audit"
 	"vibecockpit/internal/board"
+	"vibecockpit/internal/chat"
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/runner"
 	"vibecockpit/internal/costs"
@@ -49,8 +50,10 @@ type server struct {
 	inventoryTTL      time.Duration
 	demoMode          bool
 
-	auditLog  *audit.Logger
-	scheduler *scheduler.Scheduler
+	auditLog       *audit.Logger
+	scheduler      *scheduler.Scheduler
+	chatMgr        *chat.Manager
+	lastSeenAgents map[string]string
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -110,9 +113,11 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 		cacheTTL:     10 * time.Second,
 		inventoryTTL: 60 * time.Second,
 		demoMode:     isDemo,
-		auditLog:     audit.NewLogger(),
-		sessionCache: newScanCache(providers),
-		scheduler:    sched,
+		auditLog:       audit.NewLogger(),
+		sessionCache:   newScanCache(providers),
+		scheduler:      sched,
+		chatMgr:        chat.NewManager(cfg),
+		lastSeenAgents: make(map[string]string),
 		secretScanner: func() *scanner.Scanner {
 			if cfg.EnableScanner {
 				return scanner.New(providers, scanner.Config{
@@ -159,6 +164,14 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/agents/{taskId}/diff", s.handleAgentDiff)
 	mux.HandleFunc("POST /api/agents/{taskId}/merge", s.handleAgentMerge)
 	mux.HandleFunc("POST /api/agents/run", s.handleQuickRun)
+	mux.HandleFunc("GET /api/notifications", s.handleNotifications)
+	mux.HandleFunc("GET /api/chats", s.handleListChats)
+	mux.HandleFunc("POST /api/chats", s.handleCreateChat)
+	mux.HandleFunc("GET /api/chats/{id}", s.handleGetChat)
+	mux.HandleFunc("DELETE /api/chats/{id}", s.handleDeleteChat)
+	mux.HandleFunc("POST /api/chats/{id}/message", s.handleChatMessage)
+	mux.HandleFunc("GET /api/chats/{id}/files", s.handleChatFiles)
+	mux.HandleFunc("GET /api/chats/{id}/files/{name}", s.handleChatFileContent)
 	mux.HandleFunc("GET /api/jobs", s.handleGetJobs)
 	mux.HandleFunc("POST /api/jobs", s.handleCreateJob)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleGetJob)
@@ -306,6 +319,14 @@ func isWorktreeSession(path string) bool {
 	return strings.Contains(path, ".vibecockpit/worktrees/")
 }
 
+func isChatSession(path string) bool {
+	return strings.Contains(path, "vibecockpit/chats/")
+}
+
+func isInternalSession(path string) bool {
+	return isWorktreeSession(path) || isChatSession(path)
+}
+
 func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	forceRefresh := r.URL.Query().Get("refresh") == "true"
 	showWorktrees := r.URL.Query().Get("worktrees") == "true"
@@ -317,7 +338,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		} else {
 			filtered := make([]apiSession, 0)
 			for _, sess := range s.cachedResult {
-				if !isWorktreeSession(sess.ProjectPath) {
+				if !isInternalSession(sess.ProjectPath) {
 					filtered = append(filtered, sess)
 				}
 			}
@@ -362,7 +383,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	if !showWorktrees {
 		filtered := make([]apiSession, 0)
 		for _, sess := range out {
-			if !isWorktreeSession(sess.ProjectPath) {
+			if !isInternalSession(sess.ProjectPath) {
 				filtered = append(filtered, sess)
 			}
 		}
@@ -1280,6 +1301,143 @@ func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
+// -- Chat handlers --
+
+func (s *server) handleListChats(w http.ResponseWriter, _ *http.Request) {
+	chats, err := s.chatMgr.ListChats()
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(chats)
+}
+
+func (s *server) handleGetChat(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	c, err := s.chatMgr.GetChat(id)
+	if err != nil {
+		jsonError(w, "chat not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(c)
+}
+
+func (s *server) handleCreateChat(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name       string   `json:"name"`
+		Tool       string   `json:"tool"`
+		Model      string   `json:"model"`
+		Project    string   `json:"project"`
+		MCPServers []string `json:"mcpServers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		jsonError(w, "name is required", 400)
+		return
+	}
+	c, err := s.chatMgr.CreateChat(req.Name, req.Tool, req.Model, req.Project, req.MCPServers)
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(c)
+}
+
+func (s *server) handleDeleteChat(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.chatMgr.DeleteChat(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleChatMessage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req chat.SendOpts
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Content == "" {
+		jsonError(w, "content is required", 400)
+		return
+	}
+	msg, err := s.chatMgr.SendMessage(id, req)
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(msg)
+}
+
+func (s *server) handleChatFiles(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	files, err := s.chatMgr.ListFiles(id)
+	if err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	if files == nil {
+		files = []chat.ChatFile{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(files)
+}
+
+func (s *server) handleChatFileContent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	name := r.PathValue("name")
+	content, err := s.chatMgr.ReadFile(id, name)
+	if err != nil {
+		jsonError(w, err.Error(), 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"name": name, "content": content})
+}
+
+// -- Notifications handler --
+
+type notification struct {
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
+	TaskID  string `json:"taskId"`
+}
+
+func (s *server) handleNotifications(w http.ResponseWriter, _ *http.Request) {
+	runs := runner.GetActiveRuns()
+	var notifs []notification
+
+	for _, r := range runs {
+		prev, seen := s.lastSeenAgents[r.TaskID]
+		if !seen {
+			s.lastSeenAgents[r.TaskID] = r.Status
+			continue
+		}
+		if prev == "running" && r.Status != "running" {
+			msg := fmt.Sprintf("%s finished (%s)", r.TaskTitle, r.Status)
+			if r.Cost > 0 {
+				msg += fmt.Sprintf(" — ~$%.2f", r.Cost)
+			}
+			notifs = append(notifs, notification{
+				Type:    r.Status,
+				Title:   "Agent " + r.Status,
+				Message: msg,
+				TaskID:  r.TaskID,
+			})
+		}
+		s.lastSeenAgents[r.TaskID] = r.Status
+	}
+
+	if notifs == nil {
+		notifs = []notification{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(notifs)
+}
+
 // -- Quick Run handler --
 
 func (s *server) handleQuickRun(w http.ResponseWriter, r *http.Request) {
@@ -1321,9 +1479,10 @@ func (s *server) handleQuickRun(w http.ResponseWriter, r *http.Request) {
 
 type jobWithStats struct {
 	scheduler.Job
-	RunCount   int     `json:"runCount"`
-	AvgCost    float64 `json:"avgCost,omitempty"`
-	TotalCost  float64 `json:"totalCost,omitempty"`
+	RunCount    int     `json:"runCount"`
+	AvgCost     float64 `json:"avgCost,omitempty"`
+	TotalCost   float64 `json:"totalCost,omitempty"`
+	LastOutput  string  `json:"lastOutput,omitempty"`
 }
 
 func (s *server) handleGetJobs(w http.ResponseWriter, _ *http.Request) {
@@ -1335,10 +1494,24 @@ func (s *server) handleGetJobs(w http.ResponseWriter, _ *http.Request) {
 		prefix := "job-" + j.ID
 		var total float64
 		var count int
-		for _, r := range allRuns {
+		var latestRun *runner.AgentRun
+		for ri := range allRuns {
+			r := &allRuns[ri]
 			if strings.HasPrefix(r.TaskID, prefix) {
 				count++
 				total += r.Cost
+				if latestRun == nil || r.StartedAt.After(latestRun.StartedAt) {
+					latestRun = r
+				}
+			}
+		}
+		if latestRun != nil && latestRun.Status != "running" {
+			if logResp, err := runner.GetAgentLog(latestRun.TaskID); err == nil && logResp.Status != "" {
+				preview := logResp.Status
+				if len(preview) > 200 {
+					preview = preview[:200] + "..."
+				}
+				out[i].LastOutput = preview
 			}
 		}
 		out[i].RunCount = count

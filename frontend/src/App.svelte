@@ -23,10 +23,11 @@
   import BoardView from "./components/BoardView.svelte";
   import AgentMonitor from "./components/AgentMonitor.svelte";
   import Scheduler from "./components/Scheduler.svelte";
+  import ChatView from "./components/ChatView.svelte";
 
   // ─── Reactive State (Svelte 5 runes) ───
 
-  const validPages = ["dashboard", "planner", "agents", "scheduler", "sessions", "costs", "inventory", "settings"];
+  const validPages = ["dashboard", "planner", "agents", "scheduler", "chat", "sessions", "costs", "inventory", "settings"];
   const redirects = { stats: "dashboard", security: "inventory", mcp: "settings", boards: "planner" };
   function pageFromPath() {
     const p = window.location.pathname.replace(/^\/+/, "").split("/")[0];
@@ -127,6 +128,7 @@
     unsubGroup();
     unsubActiveFilters();
     stopAutoRefresh();
+    if (notifTimer) clearInterval(notifTimer);
     window.removeEventListener("popstate", handlePopState);
   });
 
@@ -163,6 +165,24 @@
     page = pageFromPath();
   }
 
+  let notifTimer;
+
+  function startNotificationPolling() {
+    notifTimer = setInterval(async () => {
+      try {
+        const r = await fetch("/api/notifications");
+        if (!r.ok) return;
+        const notifs = await r.json();
+        for (const n of notifs) {
+          showToast(n.message, n.type === "completed" ? "success" : "error");
+          if (Notification.permission === "granted") {
+            new Notification(n.title, { body: n.message });
+          }
+        }
+      } catch { /* ignore */ }
+    }, 5000);
+  }
+
   onMount(async () => {
     window.addEventListener("popstate", handlePopState);
     await loadConfig();
@@ -174,6 +194,8 @@
     }
     await refresh(false);
     startAutoRefresh();
+    if (Notification.permission === "default") Notification.requestPermission();
+    startNotificationPolling();
   });
 
   function wizardToggle(id) {
@@ -731,6 +753,10 @@
       <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <span class="sidebar-label">Scheduler</span>
     </button>
+    <button class="sidebar-btn" class:active={page === "chat"} onclick={() => navigateTo("chat")} title="Chat with AI agent">
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+      <span class="sidebar-label">Chat</span>
+    </button>
     <button class="sidebar-btn" class:active={page === "sessions"} onclick={() => navigateTo("sessions")}>
       <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       <span class="sidebar-label">Sessions</span>
@@ -811,6 +837,10 @@
     />
   </main>
 {:else if page === "sessions"}
+<div class="page-bar">
+  <h1 class="page-bar-title">Sessions</h1>
+  <span class="page-bar-subtitle">{sessionList.length} sessions across all tools</span>
+</div>
 <!-- Search Bar -->
 <div class="search-wrap">
   <div class="search-box">
@@ -1098,8 +1128,20 @@
     <AgentMonitor onnavigate={navigateTo} />
   </main>
 {:else if page === "scheduler"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Scheduler</h1>
+    <span class="page-bar-subtitle">Cron-based agent jobs</span>
+  </div>
   <main>
     <Scheduler />
+  </main>
+{:else if page === "chat"}
+  <div class="page-bar">
+    <h1 class="page-bar-title">Chat</h1>
+    <span class="page-bar-subtitle">Conversational AI with MCP tools</span>
+  </div>
+  <main class="chat-main-container">
+    <ChatView />
   </main>
 {:else if page === "costs"}
   <div class="page-bar">

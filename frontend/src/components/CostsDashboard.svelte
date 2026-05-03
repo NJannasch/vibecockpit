@@ -1,7 +1,28 @@
 <script>
   import { providerColors, providerLabels } from "../lib/utils.js";
+  import { onMount } from "svelte";
 
   let { sessions } = $props();
+
+  let agentCosts = $state({ task: 0, scheduled: 0, quick: 0, total: 0, count: 0 });
+
+  onMount(async () => {
+    try {
+      const r = await fetch("/api/agents");
+      if (r.ok) {
+        const agents = await r.json();
+        let task = 0, scheduled = 0, quick = 0, count = 0;
+        for (const a of agents) {
+          if (!a.cost) continue;
+          count++;
+          if (a.source === "scheduled") scheduled += a.cost;
+          else if (a.source === "quick") quick += a.cost;
+          else task += a.cost;
+        }
+        agentCosts = { task, scheduled, quick, total: task + scheduled + quick, count };
+      }
+    } catch { /* ignore */ }
+  });
 
   let tooltip = $state(null); // { x, y, content }
 
@@ -489,6 +510,18 @@
     </button>
   </div>
 
+  {#if agentCosts.count > 0}
+    <div class="costs-agents">
+      <span class="costs-agents-title">Agent run costs</span>
+      <div class="costs-agents-row">
+        {#if agentCosts.task > 0}<span class="costs-agents-item"><span class="costs-agents-dot" style="background:#6366f1"></span>Tasks ~${agentCosts.task.toFixed(2)}</span>{/if}
+        {#if agentCosts.scheduled > 0}<span class="costs-agents-item"><span class="costs-agents-dot" style="background:#f59e0b"></span>Scheduled ~${agentCosts.scheduled.toFixed(2)}</span>{/if}
+        {#if agentCosts.quick > 0}<span class="costs-agents-item"><span class="costs-agents-dot" style="background:#8b5cf6"></span>Quick ~${agentCosts.quick.toFixed(2)}</span>{/if}
+        <span class="costs-agents-total">Total: ~${agentCosts.total.toFixed(2)} ({agentCosts.count} runs)</span>
+      </div>
+    </div>
+  {/if}
+
   <div class="costs-info">
     Cost estimates vary by data quality:
     <b>Claude Code</b>, <b>OpenCode</b>, <b>Gemini</b> have exact per-message token counts.
@@ -950,4 +983,14 @@
     .costs-stat { min-width: 70px; padding: .5rem .3rem; }
     .costs-stat-value { font-size: 1rem; }
   }
+
+  .costs-agents {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: .6rem .8rem; margin-bottom: .8rem;
+  }
+  .costs-agents-title { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; }
+  .costs-agents-row { display: flex; gap: 1rem; align-items: center; margin-top: .3rem; flex-wrap: wrap; }
+  .costs-agents-item { font-size: .82rem; display: flex; align-items: center; gap: .3rem; }
+  .costs-agents-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .costs-agents-total { font-size: .78rem; color: var(--text-muted); margin-left: auto; }
 </style>

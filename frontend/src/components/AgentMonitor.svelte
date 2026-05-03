@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { relativeTime } from "../lib/utils.js";
-  import { quickRun, fetchSessions } from "../lib/api.js";
+  import { quickRun, fetchSessions, createJob } from "../lib/api.js";
 
   let { onnavigate } = $props();
   let diffContent = $state("");
@@ -16,8 +16,10 @@
   let searchQuery = $state("");
   let filterSource = $state("all");
   let filterStatus = $state("all");
+  let currentPage = $state(0);
+  const pageSize = 15;
   let showQuickRun = $state(false);
-  let quickForm = $state({ prompt: "", project: "", tool: "claude", model: "" });
+  let quickForm = $state({ prompt: "", project: "", tool: "claude", model: "", saveAsJob: false, jobName: "", jobCron: "0 9 * * *" });
   let knownProjects = $state([]);
   let modelsByProvider = $state({});
   let allModels = $state([]);
@@ -53,8 +55,20 @@
   async function dispatchQuickRun() {
     try {
       await quickRun(quickForm.prompt, quickForm.project, quickForm.tool, quickForm.model);
+      if (quickForm.saveAsJob && quickForm.jobName) {
+        await createJob({
+          name: quickForm.jobName,
+          cron: quickForm.jobCron,
+          tool: quickForm.tool,
+          model: quickForm.model,
+          prompt: quickForm.prompt,
+          project: quickForm.project,
+          mcpServers: ["vibecockpit"],
+          enabled: true,
+        });
+      }
       showQuickRun = false;
-      quickForm = { prompt: "", project: "", tool: "claude", model: "" };
+      quickForm = { prompt: "", project: "", tool: "claude", model: "", saveAsJob: false, jobName: "", jobCron: "0 9 * * *" };
       setTimeout(loadAgents, 1000);
     } catch (e) {
       alert("Error: " + e.message);
@@ -88,6 +102,9 @@
 
     return list;
   });
+
+  let totalPages = $derived(Math.ceil(filteredAgents().length / pageSize));
+  let pagedAgents = $derived(filteredAgents().slice(currentPage * pageSize, (currentPage + 1) * pageSize));
 
   async function loadAgents() {
     try {
@@ -265,7 +282,7 @@
           <div class="agent-no-match">No matching runs</div>
         {/if}
 
-        {#each filteredAgents() as run (run.taskId)}
+        {#each pagedAgents as run (run.taskId)}
           <button class="agent-item" class:agent-item-active={selectedAgent?.taskId === run.taskId} onclick={() => selectAgent(run)}>
             <div class="agent-item-status">
               {#if run.status === "running"}
@@ -299,6 +316,14 @@
             </div>
           </button>
         {/each}
+
+        {#if totalPages > 1}
+          <div class="agent-pagination">
+            <button class="agent-page-btn" onclick={() => { currentPage = Math.max(0, currentPage - 1); }} disabled={currentPage === 0}>&laquo;</button>
+            <span class="agent-page-info">{currentPage + 1} / {totalPages}</span>
+            <button class="agent-page-btn" onclick={() => { currentPage = Math.min(totalPages - 1, currentPage + 1); }} disabled={currentPage >= totalPages - 1}>&raquo;</button>
+          </div>
+        {/if}
       </div>
 
       <!-- Agent detail -->
@@ -527,6 +552,25 @@
       </div>
     </div>
 
+    <div class="qr-save-job">
+      <label class="qr-save-label">
+        <input type="checkbox" bind:checked={quickForm.saveAsJob} />
+        <span>Also save as scheduled job</span>
+      </label>
+      {#if quickForm.saveAsJob}
+        <div class="qr-row" style="margin-top:.4rem">
+          <div class="qr-field">
+            <label for="qr-jobname">Job name</label>
+            <input id="qr-jobname" type="text" bind:value={quickForm.jobName} placeholder="e.g. Daily Report" />
+          </div>
+          <div class="qr-field">
+            <label for="qr-jobcron">Schedule</label>
+            <input id="qr-jobcron" type="text" bind:value={quickForm.jobCron} placeholder="0 9 * * *" />
+          </div>
+        </div>
+      {/if}
+    </div>
+
     <div class="qr-actions">
       <button class="btn btn-sm" onclick={() => { showQuickRun = false; }}>Cancel</button>
       <button class="btn btn-sm btn-primary" onclick={dispatchQuickRun} disabled={!quickForm.prompt.trim()}>Run</button>
@@ -583,6 +627,14 @@
   }
 
   .agent-no-match { text-align: center; padding: 1.5rem .5rem; font-size: .82rem; color: var(--text-muted); }
+
+  .agent-pagination { display: flex; align-items: center; justify-content: center; gap: .4rem; margin-top: .4rem; }
+  .agent-page-btn {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: .2rem .5rem; font-size: .75rem; cursor: pointer; color: var(--text);
+  }
+  .agent-page-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .agent-page-info { font-size: .72rem; color: var(--text-muted); }
 
   .agent-item { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .5rem .6rem;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -696,6 +748,14 @@
   .qr-field textarea:focus, .qr-field select:focus { outline: none; border-color: var(--primary); }
   .qr-row { display: flex; gap: .5rem; }
   .qr-row .qr-field { flex: 1; }
+  .qr-save-job {
+    margin-top: .6rem; padding: .5rem .6rem; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg);
+  }
+  .qr-save-label {
+    display: flex; align-items: center; gap: .4rem; font-size: .78rem; cursor: pointer;
+  }
+  .qr-save-label input { cursor: pointer; }
   .qr-actions { display: flex; gap: .3rem; justify-content: flex-end; margin-top: .8rem; }
 
   .agent-detail-stat-wide { flex-basis: 100%; }

@@ -236,6 +236,10 @@ func RunDirect(cfg *config.Config, opts RunOpts, dt DirectTask) error {
 	}
 	workDir = expandHome(workDir)
 
+	if err := ensureMCPConfig(workDir, tc, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write MCP config: %v\n", err)
+	}
+
 	cmd := exec.Command(binPath, args...)
 	cmd.Dir = workDir
 	cmd.Env = buildEnv(cfg, binPath, opts.TaskID)
@@ -641,6 +645,40 @@ func defaultAllowedTools() []string {
 		"Bash(test *)", "Bash(echo *)", "Bash(mkdir *)", "Bash(cp *)", "Bash(mv *)",
 		"mcp__vibecockpit",
 	}
+}
+
+// ToolConfigFor exposes toolConfigFor for use by the chat package.
+func ToolConfigFor(tool string) ToolConfig {
+	tc := toolConfigFor(tool)
+	return ToolConfig{Bin: tc.bin, MCPFile: tc.mcpFile, MCPKey: tc.mcpKey, PermFile: tc.permFile}
+}
+
+// ToolConfig is the public version of toolConfig.
+type ToolConfig struct {
+	Bin      string
+	MCPFile  string
+	MCPKey   string
+	PermFile string
+}
+
+// ResolveBin exposes resolveBin for use by the chat package.
+func ResolveBin(cfg *config.Config, provName, bin string) string {
+	return resolveBin(cfg, provName, bin)
+}
+
+// BuildArgs exposes buildArgs for use by the chat package.
+func BuildArgs(tc ToolConfig, model, prompt string) []string {
+	return buildArgs(toolConfig{bin: tc.Bin, mcpFile: tc.MCPFile, mcpKey: tc.MCPKey, permFile: tc.PermFile}, model, prompt)
+}
+
+// BuildEnvForChat builds environment variables for chat agent processes.
+func BuildEnvForChat(cfg *config.Config, binPath string) []string {
+	return buildEnv(cfg, binPath, "")
+}
+
+// EnsureMCPConfigPublic exposes ensureMCPConfig for use by the chat package.
+func EnsureMCPConfigPublic(dir string, tc ToolConfig) error {
+	return ensureMCPConfig(dir, toolConfig{bin: tc.Bin, mcpFile: tc.MCPFile, mcpKey: tc.MCPKey, permFile: tc.PermFile}, nil)
 }
 
 func truncate(s string, max int) string {
