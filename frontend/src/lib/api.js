@@ -265,6 +265,23 @@ export async function resumeJob(id) {
   return res.json();
 }
 
+export async function quickRun(prompt, project, tool, model) {
+  const body = { prompt };
+  if (project) body.project = project;
+  if (tool) body.tool = tool;
+  if (model) body.model = model;
+  const res = await fetch("/api/agents/run", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
 export async function cancelJob(id) {
   const res = await fetch(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   if (!res.ok) {

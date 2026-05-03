@@ -158,6 +158,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("DELETE /api/agents/{taskId}", s.handleDeleteAgentRun)
 	mux.HandleFunc("GET /api/agents/{taskId}/diff", s.handleAgentDiff)
 	mux.HandleFunc("POST /api/agents/{taskId}/merge", s.handleAgentMerge)
+	mux.HandleFunc("POST /api/agents/run", s.handleQuickRun)
 	mux.HandleFunc("GET /api/jobs", s.handleGetJobs)
 	mux.HandleFunc("POST /api/jobs", s.handleCreateJob)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleGetJob)
@@ -1259,6 +1260,43 @@ func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// -- Quick Run handler --
+
+func (s *server) handleQuickRun(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Prompt  string `json:"prompt"`
+		Project string `json:"project"`
+		Tool    string `json:"tool"`
+		Model   string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Prompt == "" {
+		jsonError(w, "prompt is required", 400)
+		return
+	}
+	if req.Tool == "" {
+		req.Tool = "claude"
+	}
+
+	taskID := fmt.Sprintf("quick-%d", time.Now().UnixMilli())
+
+	go func() {
+		opts := runner.RunOpts{TaskID: taskID, Headless: true}
+		dt := runner.DirectTask{
+			Title:   "Quick run",
+			Prompt:  req.Prompt,
+			Tool:    req.Tool,
+			Model:   req.Model,
+			Project: req.Project,
+		}
+		if err := runner.RunDirect(s.cfg, opts, dt); err != nil {
+			fmt.Fprintf(os.Stderr, "Quick run error: %v\n", err)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "spawned", "taskId": taskID})
 }
 
 // -- Scheduled Jobs handlers --

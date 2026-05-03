@@ -112,6 +112,9 @@ func runSource(taskID string) string {
 	if strings.HasPrefix(taskID, "job-") {
 		return "scheduled"
 	}
+	if strings.HasPrefix(taskID, "quick-") {
+		return "quick"
+	}
 	return "task"
 }
 

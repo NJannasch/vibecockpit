@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { relativeTime } from "../lib/utils.js";
+  import { quickRun, fetchSessions } from "../lib/api.js";
 
   let { onnavigate } = $props();
   let diffContent = $state("");
@@ -15,8 +16,50 @@
   let searchQuery = $state("");
   let filterSource = $state("all");
   let filterStatus = $state("all");
+  let showQuickRun = $state(false);
+  let quickForm = $state({ prompt: "", project: "", tool: "claude", model: "" });
+  let knownProjects = $state([]);
+  let modelsByProvider = $state({});
+  let allModels = $state([]);
   let pollTimer;
   let logTimer;
+
+  async function loadSessionData() {
+    try {
+      const sessions = await fetchSessions();
+      const seen = new Map();
+      const provModels = {};
+      const allM = new Set();
+      for (const s of sessions) {
+        if (s.projectPath && !seen.has(s.projectPath)) {
+          seen.set(s.projectPath, s.projectName || s.projectPath.split("/").pop());
+        }
+        if (s.model && s.provider) {
+          if (!provModels[s.provider]) provModels[s.provider] = new Set();
+          provModels[s.provider].add(s.model);
+          allM.add(s.model);
+        }
+      }
+      knownProjects = [...seen.entries()].map(([path, name]) => ({ path, name })).sort((a, b) => a.name.localeCompare(b.name));
+      modelsByProvider = Object.fromEntries(Object.entries(provModels).map(([k, v]) => [k, [...v].sort()]));
+      allModels = [...allM].sort();
+    } catch { /* ignore */ }
+  }
+
+  function modelsForTool(tool) {
+    return modelsByProvider[tool] || allModels;
+  }
+
+  async function dispatchQuickRun() {
+    try {
+      await quickRun(quickForm.prompt, quickForm.project, quickForm.tool, quickForm.model);
+      showQuickRun = false;
+      quickForm = { prompt: "", project: "", tool: "claude", model: "" };
+      setTimeout(loadAgents, 1000);
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+  }
 
   let filteredAgents = $derived(() => {
     let list = [...agents];
@@ -24,7 +67,8 @@
     list.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
 
     if (filterSource === "scheduled") list = list.filter(a => a.source === "scheduled");
-    else if (filterSource === "task") list = list.filter(a => a.source !== "scheduled");
+    else if (filterSource === "quick") list = list.filter(a => a.source === "quick");
+    else if (filterSource === "task") list = list.filter(a => a.source === "task");
 
     if (filterStatus === "running") list = list.filter(a => a.status === "running");
     else if (filterStatus === "completed") list = list.filter(a => a.status === "completed");
@@ -150,6 +194,7 @@
 
   onMount(() => {
     loadAgents();
+    loadSessionData();
     pollTimer = setInterval(() => {
       loadAgents();
       if (selectedAgent?.status === "running") {
@@ -177,6 +222,8 @@
     <div class="agent-layout">
       <!-- Agent list -->
       <div class="agent-list">
+        <button class="quick-run-btn" onclick={() => { showQuickRun = true; }}>+ Quick Run</button>
+
         <div class="agent-list-stats">
           {#if runningCount > 0}<span class="agent-stat agent-stat-running">{runningCount} running</span>{/if}
           {#if completedCount > 0}<span class="agent-stat agent-stat-done">{completedCount} completed</span>{/if}
@@ -195,6 +242,7 @@
             <option value="all">All sources</option>
             <option value="task">Task runs</option>
             <option value="scheduled">Scheduled</option>
+            <option value="quick">Quick runs</option>
           </select>
           <select class="agent-filter-select" bind:value={filterStatus}>
             <option value="all">All statuses</option>
@@ -224,6 +272,8 @@
                 {run.taskTitle || run.taskId}
                 {#if run.source === "scheduled"}
                   <span class="source-tag source-scheduled" title="Triggered by a scheduled job">Scheduled</span>
+                {:else if run.source === "quick"}
+                  <span class="source-tag source-quick" title="Quick run">Quick</span>
                 {/if}
               </span>
               <span class="agent-item-meta">
@@ -251,6 +301,8 @@
                 {selectedAgent.taskTitle || selectedAgent.taskId}
                 {#if selectedAgent.source === "scheduled"}
                   <span class="source-tag source-scheduled">Scheduled</span>
+                {:else if selectedAgent.source === "quick"}
+                  <span class="source-tag source-quick">Quick</span>
                 {/if}
               </h3>
               <span class="agent-detail-meta">
@@ -302,6 +354,12 @@
               <div class="agent-detail-stat">
                 <span class="agent-detail-stat-label">Exit code</span>
                 <span class="agent-detail-stat-value">{selectedAgent.exitCode}</span>
+              </div>
+            {/if}
+            {#if selectedAgent.workDir}
+              <div class="agent-detail-stat agent-detail-stat-wide">
+                <span class="agent-detail-stat-label">{selectedAgent.workDir.includes('worktrees') ? 'Worktree' : 'Work dir'}</span>
+                <span class="agent-detail-stat-value agent-detail-stat-mono">{selectedAgent.workDir}</span>
               </div>
             {/if}
           </div>
@@ -412,6 +470,56 @@
   {/if}
 </div>
 
+{#if showQuickRun}
+<div class="agent-overlay" onclick={() => { showQuickRun = false; }} onkeydown={(e) => { if (e.key === 'Escape') showQuickRun = false; }} role="dialog" aria-modal="true" tabindex="-1">
+  <div class="agent-modal quick-run-modal" onclick={(e) => e.stopPropagation()} role="presentation">
+    <h3>Quick Run</h3>
+    <p class="quick-run-desc">Dispatch a one-shot agent run into a project.</p>
+
+    <div class="qr-field">
+      <label for="qr-prompt">Prompt</label>
+      <textarea id="qr-prompt" bind:value={quickForm.prompt} rows="4" placeholder="What should the agent do?"></textarea>
+    </div>
+
+    <div class="qr-field">
+      <label for="qr-project">Project</label>
+      <select id="qr-project" bind:value={quickForm.project}>
+        <option value="">Default workspace</option>
+        {#each knownProjects as p (p.path)}
+          <option value={p.path}>{p.name} — {p.path}</option>
+        {/each}
+      </select>
+    </div>
+
+    <div class="qr-row">
+      <div class="qr-field">
+        <label for="qr-tool">Tool</label>
+        <select id="qr-tool" bind:value={quickForm.tool} onchange={() => { quickForm.model = ''; }}>
+          <option value="claude">Claude</option>
+          <option value="codex">Codex</option>
+          <option value="gemini">Gemini</option>
+          <option value="opencode">OpenCode</option>
+        </select>
+      </div>
+      <div class="qr-field">
+        <label for="qr-model">Model</label>
+        <select id="qr-model" bind:value={quickForm.model}>
+          <option value="">Default</option>
+          {#each modelsForTool(quickForm.tool) as m (m)}
+            <option value={m}>{m}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+
+    <div class="qr-actions">
+      <button class="btn btn-sm" onclick={() => { showQuickRun = false; }}>Cancel</button>
+      <button class="btn btn-sm btn-primary" onclick={dispatchQuickRun} disabled={!quickForm.prompt.trim()}>Run</button>
+    </div>
+  </div>
+</div>
+{/if}
+
 {#if deleteConfirm.open}
 <div class="agent-overlay" onclick={() => { deleteConfirm = { open: false, taskId: "", cleanBranch: false }; }} onkeydown={(e) => { if (e.key === 'Escape') deleteConfirm = { open: false, taskId: "", cleanBranch: false }; }} role="dialog" aria-modal="true" tabindex="-1">
   <div class="agent-modal" onclick={(e) => e.stopPropagation()} role="presentation">
@@ -510,6 +618,7 @@
     border-radius: 6px; vertical-align: middle; margin-left: 4px; text-transform: uppercase; letter-spacing: .3px;
   }
   .source-scheduled { background: #fef3c7; color: #92400e; }
+  .source-quick { background: #ede9fe; color: #6d28d9; }
 
   /* Parent job panel */
   .parent-job-panel {
@@ -551,6 +660,31 @@
   .sibling-dot.dot-fail { background: var(--danger); }
   .sibling-time { color: var(--text-muted); font-size: .7rem; }
   .sibling-status { font-size: .7rem; color: var(--text-secondary); }
+
+  .quick-run-btn {
+    width: 100%; padding: .5rem; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+    background: none; color: var(--primary); font-family: inherit; font-size: .82rem; font-weight: 600;
+    cursor: pointer; margin-bottom: .5rem; transition: background .15s;
+  }
+  .quick-run-btn:hover { background: var(--primary-glow, rgba(99,102,241,.06)); }
+
+  .quick-run-modal { max-width: 480px; }
+  .quick-run-desc { font-size: .82rem; color: var(--text-muted); margin: .2rem 0 1rem; }
+
+  .qr-field { margin-bottom: .7rem; }
+  .qr-field label { display: block; font-size: .75rem; font-weight: 600; color: var(--text-muted); margin-bottom: .2rem; }
+  .qr-field textarea, .qr-field select, .qr-field input {
+    width: 100%; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: .82rem; font-family: inherit; box-sizing: border-box; background: var(--surface); color: var(--text);
+  }
+  .qr-field textarea { font-family: monospace; font-size: .78rem; resize: vertical; }
+  .qr-field textarea:focus, .qr-field select:focus { outline: none; border-color: var(--primary); }
+  .qr-row { display: flex; gap: .5rem; }
+  .qr-row .qr-field { flex: 1; }
+  .qr-actions { display: flex; gap: .3rem; justify-content: flex-end; margin-top: .8rem; }
+
+  .agent-detail-stat-wide { flex-basis: 100%; }
+  .agent-detail-stat-mono { font-family: monospace; font-size: .75rem; word-break: break-all; }
 
   .agent-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
   .agent-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 90%; max-width: 400px; }
