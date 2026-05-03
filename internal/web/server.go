@@ -1184,8 +1184,26 @@ func (s *server) handleGetAgents(w http.ResponseWriter, _ *http.Request) {
 	if runs == nil {
 		runs = []runner.AgentRun{}
 	}
+	s.enrichAgentCosts(runs)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(runs)
+}
+
+func (s *server) enrichAgentCosts(runs []runner.AgentRun) {
+	all := s.sessionCache.getSessions(false)
+	for i := range runs {
+		if runs[i].Cost > 0 || runs[i].Status == "running" {
+			continue
+		}
+		for _, sess := range all {
+			if sess.ProjectPath == runs[i].WorkDir && !sess.Modified.IsZero() &&
+				!sess.Modified.Before(runs[i].StartedAt) && sess.EstCostUSD > 0 {
+				runs[i].Cost = sess.EstCostUSD
+				runner.SetRunCost(runs[i].TaskID, sess.EstCostUSD)
+				break
+			}
+		}
+	}
 }
 
 func (s *server) handleStopAgent(w http.ResponseWriter, r *http.Request) {
@@ -1301,13 +1319,36 @@ func (s *server) handleQuickRun(w http.ResponseWriter, r *http.Request) {
 
 // -- Scheduled Jobs handlers --
 
+type jobWithStats struct {
+	scheduler.Job
+	RunCount   int     `json:"runCount"`
+	AvgCost    float64 `json:"avgCost,omitempty"`
+	TotalCost  float64 `json:"totalCost,omitempty"`
+}
+
 func (s *server) handleGetJobs(w http.ResponseWriter, _ *http.Request) {
 	jobs := s.scheduler.GetJobs()
-	if jobs == nil {
-		jobs = []scheduler.Job{}
+	out := make([]jobWithStats, len(jobs))
+	allRuns := runner.GetActiveRuns()
+	for i, j := range jobs {
+		out[i] = jobWithStats{Job: j}
+		taskPrefix := "job-" + j.ID
+		var total float64
+		var count int
+		for _, r := range allRuns {
+			if r.TaskID == taskPrefix {
+				count++
+				total += r.Cost
+			}
+		}
+		out[i].RunCount = count
+		out[i].TotalCost = total
+		if count > 0 {
+			out[i].AvgCost = total / float64(count)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jobs)
+	json.NewEncoder(w).Encode(out)
 }
 
 func (s *server) handleGetJob(w http.ResponseWriter, r *http.Request) {

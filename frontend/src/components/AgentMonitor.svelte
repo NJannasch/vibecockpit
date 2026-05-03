@@ -350,6 +350,12 @@
               <span class="agent-detail-stat-label">PID</span>
               <span class="agent-detail-stat-value">{selectedAgent.pid}</span>
             </div>
+            {#if selectedAgent.cost}
+              <div class="agent-detail-stat">
+                <span class="agent-detail-stat-label">Est. cost</span>
+                <span class="agent-detail-stat-value">~${selectedAgent.cost.toFixed(2)}</span>
+              </div>
+            {/if}
             {#if selectedAgent.exitCode}
               <div class="agent-detail-stat">
                 <span class="agent-detail-stat-label">Exit code</span>

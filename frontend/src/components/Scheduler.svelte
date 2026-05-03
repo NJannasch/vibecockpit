@@ -260,6 +260,12 @@
             {#if job.lastStatus && job.lastStatus !== "running"}
               <span class="job-last-status {job.lastStatus}">{job.lastStatus}</span>
             {/if}
+            {#if job.runCount}
+              <span class="job-runs-count">{job.runCount} run{job.runCount !== 1 ? 's' : ''}</span>
+            {/if}
+            {#if job.avgCost}
+              <span class="job-avg-cost" title="Total: ~${job.totalCost?.toFixed(2)}">~${job.avgCost.toFixed(2)}/run</span>
+            {/if}
             {#if job.project}
               <span class="job-project" title={job.project}>{job.project.split('/').pop()}</span>
             {/if}
@@ -523,6 +529,8 @@
   .job-last-status { font-weight: 500; }
   .job-last-status.completed { color: #16a34a; }
   .job-last-status.failed, .job-last-status.cancelled { color: #dc2626; }
+  .job-runs-count { color: #6b7280; }
+  .job-avg-cost { color: #b45309; font-weight: 500; }
   .job-project {
     background: #f0fdf4; color: #15803d; font-size: 11px; padding: 1px 6px;
     border-radius: 4px; font-family: monospace;
