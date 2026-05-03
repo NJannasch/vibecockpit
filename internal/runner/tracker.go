@@ -28,6 +28,9 @@ type AgentRun struct {
 	WorkDir   string    `json:"workDir"`
 	LogPath   string    `json:"logPath"`
 	ExitCode  int       `json:"exitCode,omitempty"`
+	Source    string    `json:"source,omitempty"`
+	Cost      float64   `json:"cost,omitempty"`
+	Duration  float64   `json:"durationSec,omitempty"`
 }
 
 var (
@@ -103,8 +106,20 @@ func trackEnd(taskID string, exitCode int) {
 			r.Status = "failed"
 		}
 		r.ExitCode = exitCode
+		r.Duration = time.Since(r.StartedAt).Seconds()
+		r.Elapsed = time.Since(r.StartedAt).Truncate(time.Second).String()
 		persistRuns()
 	}
+}
+
+func runSource(taskID string) string {
+	if strings.HasPrefix(taskID, "job-") {
+		return "scheduled"
+	}
+	if strings.HasPrefix(taskID, "quick-") {
+		return "quick"
+	}
+	return "task"
 }
 
 func GetActiveRuns() []AgentRun {
@@ -116,6 +131,7 @@ func GetActiveRuns() []AgentRun {
 		if run.Status == "running" {
 			run.Elapsed = time.Since(run.StartedAt).Truncate(time.Second).String()
 		}
+		run.Source = runSource(run.TaskID)
 		runs = append(runs, run)
 	}
 	return runs
@@ -129,6 +145,7 @@ func GetRun(taskID string) *AgentRun {
 		if run.Status == "running" {
 			run.Elapsed = time.Since(run.StartedAt).Truncate(time.Second).String()
 		}
+		run.Source = runSource(run.TaskID)
 		return &run
 	}
 	return nil
@@ -339,6 +356,15 @@ func MergeAgentBranch(taskID string) error {
 	_ = delCmd.Run()
 
 	return nil
+}
+
+func SetRunCost(taskID string, cost float64) {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
+	if r, ok := activeRuns[taskID]; ok {
+		r.Cost = cost
+		persistRuns()
+	}
 }
 
 func DeleteRun(taskID string, cleanupBranch bool) error {

@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { relativeTime } from "../lib/utils.js";
+  import { quickRun, fetchSessions } from "../lib/api.js";
 
   let { onnavigate } = $props();
   let diffContent = $state("");
@@ -10,9 +11,83 @@
   let agents = $state([]);
   let selectedAgent = $state(null);
   let agentLog = $state({ stdout: "", status: "", recent: "" });
+  let parentJob = $state(null);
   let logAutoRefresh = $state(true);
+  let searchQuery = $state("");
+  let filterSource = $state("all");
+  let filterStatus = $state("all");
+  let showQuickRun = $state(false);
+  let quickForm = $state({ prompt: "", project: "", tool: "claude", model: "" });
+  let knownProjects = $state([]);
+  let modelsByProvider = $state({});
+  let allModels = $state([]);
   let pollTimer;
   let logTimer;
+
+  async function loadSessionData() {
+    try {
+      const sessions = await fetchSessions();
+      const seen = new Map();
+      const provModels = {};
+      const allM = new Set();
+      for (const s of sessions) {
+        if (s.projectPath && !seen.has(s.projectPath)) {
+          seen.set(s.projectPath, s.projectName || s.projectPath.split("/").pop());
+        }
+        if (s.model && s.provider) {
+          if (!provModels[s.provider]) provModels[s.provider] = new Set();
+          provModels[s.provider].add(s.model);
+          allM.add(s.model);
+        }
+      }
+      knownProjects = [...seen.entries()].map(([path, name]) => ({ path, name })).sort((a, b) => a.name.localeCompare(b.name));
+      modelsByProvider = Object.fromEntries(Object.entries(provModels).map(([k, v]) => [k, [...v].sort()]));
+      allModels = [...allM].sort();
+    } catch { /* ignore */ }
+  }
+
+  function modelsForTool(tool) {
+    return modelsByProvider[tool] || allModels;
+  }
+
+  async function dispatchQuickRun() {
+    try {
+      await quickRun(quickForm.prompt, quickForm.project, quickForm.tool, quickForm.model);
+      showQuickRun = false;
+      quickForm = { prompt: "", project: "", tool: "claude", model: "" };
+      setTimeout(loadAgents, 1000);
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+  }
+
+  let filteredAgents = $derived(() => {
+    let list = [...agents];
+
+    list.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+
+    if (filterSource === "scheduled") list = list.filter(a => a.source === "scheduled");
+    else if (filterSource === "quick") list = list.filter(a => a.source === "quick");
+    else if (filterSource === "task") list = list.filter(a => a.source === "task");
+
+    if (filterStatus === "running") list = list.filter(a => a.status === "running");
+    else if (filterStatus === "completed") list = list.filter(a => a.status === "completed");
+    else if (filterStatus === "failed") list = list.filter(a => a.status === "failed" || a.status === "cancelled");
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(a =>
+        (a.taskTitle || "").toLowerCase().includes(q) ||
+        (a.taskId || "").toLowerCase().includes(q) ||
+        (a.boardName || "").toLowerCase().includes(q) ||
+        (a.project || "").toLowerCase().includes(q) ||
+        (a.tool || "").toLowerCase().includes(q) ||
+        (a.model || "").toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  });
 
   async function loadAgents() {
     try {
@@ -36,9 +111,31 @@
     } catch { agentLog = { stdout: "(failed to load)", status: "", recent: "" }; }
   }
 
+  function jobIdFromTaskId(taskId) {
+    return taskId.startsWith("job-") ? taskId.slice(4) : null;
+  }
+
+  function siblingRuns(taskId) {
+    return agents
+      .filter(a => a.taskId === taskId || (a.source === "scheduled" && a.taskId.slice(4) === taskId.slice(4)))
+      .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+  }
+
+  async function loadParentJob(taskId) {
+    const jobId = jobIdFromTaskId(taskId);
+    if (!jobId) { parentJob = null; return; }
+    try {
+      const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+      if (r.ok) parentJob = await r.json();
+      else parentJob = null;
+    } catch { parentJob = null; }
+  }
+
   function selectAgent(run) {
     selectedAgent = run;
     loadLog(run.taskId);
+    if (run.source === "scheduled") loadParentJob(run.taskId);
+    else parentJob = null;
     if (logTimer) clearInterval(logTimer);
     if (run.status === "running" && logAutoRefresh) {
       logTimer = setInterval(() => loadLog(run.taskId), 3000);
@@ -97,6 +194,7 @@
 
   onMount(() => {
     loadAgents();
+    loadSessionData();
     pollTimer = setInterval(() => {
       loadAgents();
       if (selectedAgent?.status === "running") {
@@ -124,12 +222,41 @@
     <div class="agent-layout">
       <!-- Agent list -->
       <div class="agent-list">
+        <button class="quick-run-btn" onclick={() => { showQuickRun = true; }}>+ Quick Run</button>
+
         <div class="agent-list-stats">
           {#if runningCount > 0}<span class="agent-stat agent-stat-running">{runningCount} running</span>{/if}
           {#if completedCount > 0}<span class="agent-stat agent-stat-done">{completedCount} completed</span>{/if}
           {#if failedCount > 0}<span class="agent-stat agent-stat-fail">{failedCount} failed</span>{/if}
         </div>
-        {#each agents as run (run.taskId)}
+
+        <input
+          class="agent-search"
+          type="text"
+          placeholder="Search runs..."
+          bind:value={searchQuery}
+        />
+
+        <div class="agent-filters">
+          <select class="agent-filter-select" bind:value={filterSource}>
+            <option value="all">All sources</option>
+            <option value="task">Task runs</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="quick">Quick runs</option>
+          </select>
+          <select class="agent-filter-select" bind:value={filterStatus}>
+            <option value="all">All statuses</option>
+            <option value="running">Running</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+
+        {#if filteredAgents().length === 0}
+          <div class="agent-no-match">No matching runs</div>
+        {/if}
+
+        {#each filteredAgents() as run (run.taskId)}
           <button class="agent-item" class:agent-item-active={selectedAgent?.taskId === run.taskId} onclick={() => selectAgent(run)}>
             <div class="agent-item-status">
               {#if run.status === "running"}
@@ -141,9 +268,16 @@
               {/if}
             </div>
             <div class="agent-item-info">
-              <span class="agent-item-task">{run.taskTitle || run.taskId}</span>
+              <span class="agent-item-task">
+                {run.taskTitle || run.taskId}
+                {#if run.source === "scheduled"}
+                  <span class="source-tag source-scheduled" title="Triggered by a scheduled job">Scheduled</span>
+                {:else if run.source === "quick"}
+                  <span class="source-tag source-quick" title="Quick run">Quick</span>
+                {/if}
+              </span>
               <span class="agent-item-meta">
-                {run.boardName} · {run.tool}{run.model ? " · " + run.model : ""}
+                {run.boardName || run.project?.split('/').pop() || ''} · {run.tool}{run.model ? " · " + run.model : ""}
               </span>
             </div>
             <div class="agent-item-right">
@@ -152,6 +286,7 @@
               {:else}
                 <span class="agent-item-status-text">{run.status}</span>
               {/if}
+              <span class="agent-item-time">{relativeTime(run.startedAt)}</span>
             </div>
           </button>
         {/each}
@@ -162,9 +297,22 @@
         {#if selectedAgent}
           <div class="agent-detail-header">
             <div>
-              <h3 class="agent-detail-title">{selectedAgent.taskTitle || selectedAgent.taskId}</h3>
+              <h3 class="agent-detail-title">
+                {selectedAgent.taskTitle || selectedAgent.taskId}
+                {#if selectedAgent.source === "scheduled"}
+                  <span class="source-tag source-scheduled">Scheduled</span>
+                {:else if selectedAgent.source === "quick"}
+                  <span class="source-tag source-quick">Quick</span>
+                {/if}
+              </h3>
               <span class="agent-detail-meta">
-                <button class="agent-link" onclick={() => onnavigate("planner")}>{selectedAgent.boardName}</button> · {selectedAgent.project} · {selectedAgent.tool}{selectedAgent.model ? " · " + selectedAgent.model : ""}
+                {#if selectedAgent.boardName}
+                  <button class="agent-link" onclick={() => onnavigate("planner")}>{selectedAgent.boardName}</button> ·
+                {/if}
+                {selectedAgent.project} · {selectedAgent.tool}{selectedAgent.model ? " · " + selectedAgent.model : ""}
+                {#if selectedAgent.source === "scheduled"}
+                  · <button class="agent-link" onclick={() => onnavigate("scheduler")}>View schedule</button>
+                {/if}
               </span>
             </div>
             <div class="agent-detail-actions">
@@ -202,13 +350,86 @@
               <span class="agent-detail-stat-label">PID</span>
               <span class="agent-detail-stat-value">{selectedAgent.pid}</span>
             </div>
+            {#if selectedAgent.cost}
+              <div class="agent-detail-stat">
+                <span class="agent-detail-stat-label">Est. cost</span>
+                <span class="agent-detail-stat-value">~${selectedAgent.cost.toFixed(2)}</span>
+              </div>
+            {/if}
             {#if selectedAgent.exitCode}
               <div class="agent-detail-stat">
                 <span class="agent-detail-stat-label">Exit code</span>
                 <span class="agent-detail-stat-value">{selectedAgent.exitCode}</span>
               </div>
             {/if}
+            {#if selectedAgent.workDir}
+              <div class="agent-detail-stat agent-detail-stat-wide">
+                <span class="agent-detail-stat-label">{selectedAgent.workDir.includes('worktrees') ? 'Worktree' : 'Work dir'}</span>
+                <span class="agent-detail-stat-value agent-detail-stat-mono">{selectedAgent.workDir}</span>
+              </div>
+            {/if}
           </div>
+
+          {#if parentJob && selectedAgent?.source === "scheduled"}
+            <div class="parent-job-panel">
+              <div class="parent-job-header">
+                <span class="parent-job-title">Job: {parentJob.name}</span>
+                <button class="agent-link" onclick={() => onnavigate("scheduler")}>Edit</button>
+              </div>
+              <div class="parent-job-config">
+                <div class="parent-job-field">
+                  <span class="parent-job-label">Schedule</span>
+                  <span>{parentJob.humanCron || parentJob.cron}</span>
+                  <code class="parent-job-cron">{parentJob.cron}</code>
+                </div>
+                <div class="parent-job-field">
+                  <span class="parent-job-label">Tool / Model</span>
+                  <span>{parentJob.tool}{parentJob.model ? " / " + parentJob.model : ""}</span>
+                </div>
+                {#if parentJob.project}
+                  <div class="parent-job-field">
+                    <span class="parent-job-label">Project</span>
+                    <span class="parent-job-mono">{parentJob.project}</span>
+                  </div>
+                {/if}
+                {#if parentJob.mcpServers?.length}
+                  <div class="parent-job-field">
+                    <span class="parent-job-label">MCP</span>
+                    <span>{parentJob.mcpServers.join(", ")}</span>
+                  </div>
+                {/if}
+                {#if parentJob.costCap}
+                  <div class="parent-job-field">
+                    <span class="parent-job-label">Cost cap</span>
+                    <span>${parentJob.costCap}</span>
+                  </div>
+                {/if}
+                <div class="parent-job-field parent-job-prompt">
+                  <span class="parent-job-label">Prompt</span>
+                  <span>{parentJob.prompt.length > 200 ? parentJob.prompt.slice(0, 200) + "..." : parentJob.prompt}</span>
+                </div>
+              </div>
+
+              {#if siblingRuns(selectedAgent.taskId).length > 1}
+                <div class="parent-job-runs">
+                  <span class="parent-job-label">Run history ({siblingRuns(selectedAgent.taskId).length})</span>
+                  <div class="sibling-list">
+                    {#each siblingRuns(selectedAgent.taskId) as sib (sib.taskId + sib.startedAt)}
+                      <button
+                        class="sibling-item"
+                        class:sibling-active={sib.taskId === selectedAgent.taskId && sib.startedAt === selectedAgent.startedAt}
+                        onclick={() => selectAgent(sib)}
+                      >
+                        <span class="sibling-dot" class:dot-ok={sib.status === "completed" || sib.status === "running"} class:dot-fail={sib.status === "failed" || sib.status === "cancelled"}></span>
+                        <span class="sibling-time">{relativeTime(sib.startedAt)}</span>
+                        <span class="sibling-status">{sib.status}{sib.elapsed ? " · " + sib.elapsed : ""}</span>
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           {#if agentLog.status}
             <div class="agent-log">
@@ -255,6 +476,56 @@
   {/if}
 </div>
 
+{#if showQuickRun}
+<div class="agent-overlay" onclick={() => { showQuickRun = false; }} onkeydown={(e) => { if (e.key === 'Escape') showQuickRun = false; }} role="dialog" aria-modal="true" tabindex="-1">
+  <div class="agent-modal quick-run-modal" onclick={(e) => e.stopPropagation()} role="presentation">
+    <h3>Quick Run</h3>
+    <p class="quick-run-desc">Dispatch a one-shot agent run into a project.</p>
+
+    <div class="qr-field">
+      <label for="qr-prompt">Prompt</label>
+      <textarea id="qr-prompt" bind:value={quickForm.prompt} rows="4" placeholder="What should the agent do?"></textarea>
+    </div>
+
+    <div class="qr-field">
+      <label for="qr-project">Project</label>
+      <select id="qr-project" bind:value={quickForm.project}>
+        <option value="">Default workspace</option>
+        {#each knownProjects as p (p.path)}
+          <option value={p.path}>{p.name} — {p.path}</option>
+        {/each}
+      </select>
+    </div>
+
+    <div class="qr-row">
+      <div class="qr-field">
+        <label for="qr-tool">Tool</label>
+        <select id="qr-tool" bind:value={quickForm.tool} onchange={() => { quickForm.model = ''; }}>
+          <option value="claude">Claude</option>
+          <option value="codex">Codex</option>
+          <option value="gemini">Gemini</option>
+          <option value="opencode">OpenCode</option>
+        </select>
+      </div>
+      <div class="qr-field">
+        <label for="qr-model">Model</label>
+        <select id="qr-model" bind:value={quickForm.model}>
+          <option value="">Default</option>
+          {#each modelsForTool(quickForm.tool) as m (m)}
+            <option value={m}>{m}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+
+    <div class="qr-actions">
+      <button class="btn btn-sm" onclick={() => { showQuickRun = false; }}>Cancel</button>
+      <button class="btn btn-sm btn-primary" onclick={dispatchQuickRun} disabled={!quickForm.prompt.trim()}>Run</button>
+    </div>
+  </div>
+</div>
+{/if}
+
 {#if deleteConfirm.open}
 <div class="agent-overlay" onclick={() => { deleteConfirm = { open: false, taskId: "", cleanBranch: false }; }} onkeydown={(e) => { if (e.key === 'Escape') deleteConfirm = { open: false, taskId: "", cleanBranch: false }; }} role="dialog" aria-modal="true" tabindex="-1">
   <div class="agent-modal" onclick={(e) => e.stopPropagation()} role="presentation">
@@ -288,6 +559,22 @@
   .agent-stat-done { color: var(--text-muted); background: var(--bg); }
   .agent-stat-fail { color: var(--danger); background: var(--danger-dim, rgba(239,68,68,.1)); }
 
+  .agent-search {
+    width: 100%; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: .8rem; margin-bottom: .4rem; box-sizing: border-box; background: var(--surface);
+    color: var(--text);
+  }
+  .agent-search:focus { outline: none; border-color: var(--primary); }
+  .agent-search::placeholder { color: var(--text-muted); }
+
+  .agent-filters { display: flex; gap: .3rem; margin-bottom: .5rem; }
+  .agent-filter-select {
+    flex: 1; padding: .3rem .4rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: .72rem; background: var(--surface); color: var(--text); cursor: pointer;
+  }
+
+  .agent-no-match { text-align: center; padding: 1.5rem .5rem; font-size: .82rem; color: var(--text-muted); }
+
   .agent-item { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .5rem .6rem;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
     cursor: pointer; font-family: inherit; color: var(--text); text-align: left; margin-bottom: .3rem; transition: border-color .15s; }
@@ -306,6 +593,7 @@
   .agent-item-right { flex-shrink: 0; text-align: right; }
   .agent-item-elapsed { font-size: .75rem; font-weight: 600; color: var(--success); }
   .agent-item-status-text { font-size: .72rem; color: var(--text-muted); }
+  .agent-item-time { display: block; font-size: .65rem; color: var(--text-muted); margin-top: 1px; }
 
   /* Detail */
   .agent-detail { flex: 1; min-width: 0; }
@@ -330,6 +618,79 @@
   .agent-log + .agent-log { margin-top: .5rem; }
   .agent-log-diff { font-family: monospace; font-size: .7rem; max-height: 400px; }
   .agent-link { background: none; border: none; color: var(--primary); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+
+  .source-tag {
+    display: inline-block; font-size: .6rem; font-weight: 600; padding: 1px 5px;
+    border-radius: 6px; vertical-align: middle; margin-left: 4px; text-transform: uppercase; letter-spacing: .3px;
+  }
+  .source-scheduled { background: #fef3c7; color: #92400e; }
+  .source-quick { background: #ede9fe; color: #6d28d9; }
+
+  /* Parent job panel */
+  .parent-job-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: .8rem; margin-bottom: .5rem;
+  }
+  .parent-job-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem;
+  }
+  .parent-job-title { font-size: .85rem; font-weight: 700; }
+  .parent-job-config { display: flex; flex-wrap: wrap; gap: .3rem .8rem; }
+  .parent-job-field { font-size: .78rem; }
+  .parent-job-label {
+    display: inline-block; font-size: .65rem; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .3px; margin-right: .3rem;
+  }
+  .parent-job-cron {
+    font-size: .68rem; background: var(--bg); padding: .1rem .3rem; border-radius: 3px;
+    margin-left: .3rem; color: var(--text-muted);
+  }
+  .parent-job-mono { font-family: monospace; font-size: .75rem; }
+  .parent-job-prompt {
+    flex-basis: 100%; margin-top: .3rem; font-size: .75rem; color: var(--text-secondary);
+    white-space: pre-wrap; line-height: 1.4;
+  }
+
+  .parent-job-runs { margin-top: .6rem; border-top: 1px solid var(--border); padding-top: .5rem; }
+  .sibling-list { display: flex; flex-direction: column; gap: .2rem; margin-top: .3rem; max-height: 150px; overflow-y: auto; }
+  .sibling-item {
+    display: flex; align-items: center; gap: .4rem; padding: .25rem .4rem;
+    background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+    font-family: inherit; font-size: .75rem; color: var(--text); cursor: pointer;
+    text-align: left; width: 100%;
+  }
+  .sibling-item:hover { background: var(--bg); }
+  .sibling-active { border-color: var(--primary); background: var(--primary-glow, rgba(99,102,241,.06)); }
+  .sibling-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
+  .sibling-dot.dot-ok { background: var(--success); }
+  .sibling-dot.dot-fail { background: var(--danger); }
+  .sibling-time { color: var(--text-muted); font-size: .7rem; }
+  .sibling-status { font-size: .7rem; color: var(--text-secondary); }
+
+  .quick-run-btn {
+    width: 100%; padding: .5rem; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+    background: none; color: var(--primary); font-family: inherit; font-size: .82rem; font-weight: 600;
+    cursor: pointer; margin-bottom: .5rem; transition: background .15s;
+  }
+  .quick-run-btn:hover { background: var(--primary-glow, rgba(99,102,241,.06)); }
+
+  .quick-run-modal { max-width: 480px; }
+  .quick-run-desc { font-size: .82rem; color: var(--text-muted); margin: .2rem 0 1rem; }
+
+  .qr-field { margin-bottom: .7rem; }
+  .qr-field label { display: block; font-size: .75rem; font-weight: 600; color: var(--text-muted); margin-bottom: .2rem; }
+  .qr-field textarea, .qr-field select, .qr-field input {
+    width: 100%; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: .82rem; font-family: inherit; box-sizing: border-box; background: var(--surface); color: var(--text);
+  }
+  .qr-field textarea { font-family: monospace; font-size: .78rem; resize: vertical; }
+  .qr-field textarea:focus, .qr-field select:focus { outline: none; border-color: var(--primary); }
+  .qr-row { display: flex; gap: .5rem; }
+  .qr-row .qr-field { flex: 1; }
+  .qr-actions { display: flex; gap: .3rem; justify-content: flex-end; margin-top: .8rem; }
+
+  .agent-detail-stat-wide { flex-basis: 100%; }
+  .agent-detail-stat-mono { font-family: monospace; font-size: .75rem; word-break: break-all; }
 
   .agent-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
   .agent-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 90%; max-width: 400px; }

@@ -199,6 +199,80 @@ func Run(cfg *config.Config, opts RunOpts) error {
 	return nil
 }
 
+// DirectTask provides task-like data for scheduled jobs that don't have a board task.
+type DirectTask struct {
+	Title   string
+	Prompt  string
+	Tool    string
+	Model   string
+	Project string
+}
+
+// RunDirect runs an agent without a board task — used by the scheduler.
+func RunDirect(cfg *config.Config, opts RunOpts, dt DirectTask) error {
+	tool := dt.Tool
+	if tool == "" {
+		tool = "claude"
+	}
+	model := dt.Model
+	tc := toolConfigFor(tool)
+
+	binPath := resolveBin(cfg, tool, tc.bin)
+	if binPath == "" {
+		return fmt.Errorf("could not find %q in PATH", tc.bin)
+	}
+
+	prompt := dt.Prompt
+	if cfg.AgentPrompt != "" {
+		prompt = cfg.AgentPrompt + "\n\n" + prompt
+	}
+
+	args := buildArgs(tc, model, prompt)
+	logPath := filepath.Join(os.TempDir(), fmt.Sprintf("vibecockpit-job-%s.log", opts.TaskID))
+
+	workDir := dt.Project
+	if workDir == "" {
+		workDir = cfg.NewProjectDir
+	}
+	workDir = expandHome(workDir)
+
+	cmd := exec.Command(binPath, args...)
+	cmd.Dir = workDir
+	cmd.Env = buildEnv(cfg, binPath, opts.TaskID)
+
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return fmt.Errorf("create log file: %w", err)
+	}
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.Stdin = nil
+
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		return fmt.Errorf("start agent: %w", err)
+	}
+	trackStart(opts.TaskID, dt.Title, opts.BoardName, workDir, tool, model, cmd.Process.Pid, cmd.Dir, logPath)
+
+	waitErr := cmd.Wait()
+	logFile.Close()
+
+	exitCode := 0
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = 1
+		}
+	}
+	trackEnd(opts.TaskID, exitCode)
+
+	if exitCode != 0 {
+		return fmt.Errorf("agent exited with code %d", exitCode)
+	}
+	return nil
+}
+
 var instructionFiles = []string{
 	"CLAUDE.md", "AGENTS.md", "GEMINI.md", "OPENCODE.md",
 	".cursorrules", "codex.md", "CODEX.md",

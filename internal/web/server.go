@@ -27,6 +27,7 @@ import (
 	"vibecockpit/internal/launcher"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/scanner"
+	"vibecockpit/internal/scheduler"
 	"vibecockpit/internal/stats"
 )
 
@@ -48,7 +49,8 @@ type server struct {
 	inventoryTTL      time.Duration
 	demoMode          bool
 
-	auditLog *audit.Logger
+	auditLog  *audit.Logger
+	scheduler *scheduler.Scheduler
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -102,6 +104,7 @@ type providerInfo struct {
 
 func Start(cfg *config.Config, providers []provider.Provider, port int, version string) error {
 	isDemo := len(providers) == 1 && providers[0].Name() == "demo"
+	sched := scheduler.New(cfg)
 	s := &server{
 		cfg: cfg, providers: providers, version: version,
 		cacheTTL:     10 * time.Second,
@@ -109,6 +112,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 		demoMode:     isDemo,
 		auditLog:     audit.NewLogger(),
 		sessionCache: newScanCache(providers),
+		scheduler:    sched,
 		secretScanner: func() *scanner.Scanner {
 			if cfg.EnableScanner {
 				return scanner.New(providers, scanner.Config{
@@ -154,6 +158,17 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("DELETE /api/agents/{taskId}", s.handleDeleteAgentRun)
 	mux.HandleFunc("GET /api/agents/{taskId}/diff", s.handleAgentDiff)
 	mux.HandleFunc("POST /api/agents/{taskId}/merge", s.handleAgentMerge)
+	mux.HandleFunc("POST /api/agents/run", s.handleQuickRun)
+	mux.HandleFunc("GET /api/jobs", s.handleGetJobs)
+	mux.HandleFunc("POST /api/jobs", s.handleCreateJob)
+	mux.HandleFunc("GET /api/jobs/{id}", s.handleGetJob)
+	mux.HandleFunc("PUT /api/jobs/{id}", s.handleUpdateJob)
+	mux.HandleFunc("DELETE /api/jobs/{id}", s.handleDeleteJob)
+	mux.HandleFunc("POST /api/jobs/{id}/trigger", s.handleTriggerJob)
+	mux.HandleFunc("POST /api/jobs/{id}/pause", s.handlePauseJob)
+	mux.HandleFunc("POST /api/jobs/{id}/resume", s.handleResumeJob)
+	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleCancelJob)
+	mux.HandleFunc("GET /api/jobs/{id}/runs", s.handleJobRuns)
 	if cfg.EnableScanner {
 		mux.HandleFunc("POST /api/scan-secrets", s.handleStartScan)
 		mux.HandleFunc("GET /api/scan-secrets", s.handleScanStatus)
@@ -181,6 +196,8 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 			return err
 		}
 	}
+
+	sched.Start()
 
 	fmt.Printf("VibeCockpit web UI: http://%s\n", addr)
 	fmt.Println("Press Ctrl+C to stop")
@@ -1167,8 +1184,26 @@ func (s *server) handleGetAgents(w http.ResponseWriter, _ *http.Request) {
 	if runs == nil {
 		runs = []runner.AgentRun{}
 	}
+	s.enrichAgentCosts(runs)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(runs)
+}
+
+func (s *server) enrichAgentCosts(runs []runner.AgentRun) {
+	all := s.sessionCache.getSessions(false)
+	for i := range runs {
+		if runs[i].Cost > 0 || runs[i].Status == "running" {
+			continue
+		}
+		for _, sess := range all {
+			if sess.ProjectPath == runs[i].WorkDir && !sess.Modified.IsZero() &&
+				!sess.Modified.Before(runs[i].StartedAt) && sess.EstCostUSD > 0 {
+				runs[i].Cost = sess.EstCostUSD
+				runner.SetRunCost(runs[i].TaskID, sess.EstCostUSD)
+				break
+			}
+		}
+	}
 }
 
 func (s *server) handleStopAgent(w http.ResponseWriter, r *http.Request) {
@@ -1243,6 +1278,183 @@ func (s *server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// -- Quick Run handler --
+
+func (s *server) handleQuickRun(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Prompt  string `json:"prompt"`
+		Project string `json:"project"`
+		Tool    string `json:"tool"`
+		Model   string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Prompt == "" {
+		jsonError(w, "prompt is required", 400)
+		return
+	}
+	if req.Tool == "" {
+		req.Tool = "claude"
+	}
+
+	taskID := fmt.Sprintf("quick-%d", time.Now().UnixMilli())
+
+	go func() {
+		opts := runner.RunOpts{TaskID: taskID, Headless: true}
+		dt := runner.DirectTask{
+			Title:   "Quick run",
+			Prompt:  req.Prompt,
+			Tool:    req.Tool,
+			Model:   req.Model,
+			Project: req.Project,
+		}
+		if err := runner.RunDirect(s.cfg, opts, dt); err != nil {
+			fmt.Fprintf(os.Stderr, "Quick run error: %v\n", err)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "spawned", "taskId": taskID})
+}
+
+// -- Scheduled Jobs handlers --
+
+type jobWithStats struct {
+	scheduler.Job
+	RunCount   int     `json:"runCount"`
+	AvgCost    float64 `json:"avgCost,omitempty"`
+	TotalCost  float64 `json:"totalCost,omitempty"`
+}
+
+func (s *server) handleGetJobs(w http.ResponseWriter, _ *http.Request) {
+	jobs := s.scheduler.GetJobs()
+	out := make([]jobWithStats, len(jobs))
+	allRuns := runner.GetActiveRuns()
+	for i, j := range jobs {
+		out[i] = jobWithStats{Job: j}
+		taskPrefix := "job-" + j.ID
+		var total float64
+		var count int
+		for _, r := range allRuns {
+			if r.TaskID == taskPrefix {
+				count++
+				total += r.Cost
+			}
+		}
+		out[i].RunCount = count
+		out[i].TotalCost = total
+		if count > 0 {
+			out[i].AvgCost = total / float64(count)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
+func (s *server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	j := s.scheduler.GetJob(id)
+	if j == nil {
+		jsonError(w, "job not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(j)
+}
+
+func (s *server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
+	var j scheduler.Job
+	if err := json.NewDecoder(r.Body).Decode(&j); err != nil {
+		jsonError(w, "invalid request", 400)
+		return
+	}
+	if j.Name == "" || j.Cron == "" || j.Prompt == "" {
+		jsonError(w, "name, cron, and prompt are required", 400)
+		return
+	}
+	created, err := s.scheduler.CreateJob(j)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(created)
+}
+
+func (s *server) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var updates map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		jsonError(w, "invalid request", 400)
+		return
+	}
+	updated, err := s.scheduler.UpdateJob(id, updates)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updated)
+}
+
+func (s *server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.DeleteJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleTriggerJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.TriggerJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "triggered"})
+}
+
+func (s *server) handlePauseJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.PauseJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleResumeJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.ResumeJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.scheduler.CancelJob(id); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (s *server) handleJobRuns(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	runs := s.scheduler.GetJobRuns(id)
+	if runs == nil {
+		runs = []runner.AgentRun{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(runs)
 }
 
 // getLatestVersion returns the cached latest release tag, refreshing it

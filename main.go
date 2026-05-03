@@ -126,7 +126,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "MCP server is disabled. Enable it in config.yaml:\n\n  enable_mcp: true")
 			os.Exit(1)
 		}
-		srv := mcpserver.NewServer(providers, version, cfg.NewProjectDir)
+		srv := mcpserver.NewServer(providers, version, cfg.NewProjectDir, cfg)
 		if err := srv.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
 			os.Exit(1)
