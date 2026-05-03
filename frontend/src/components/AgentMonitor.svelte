@@ -10,6 +10,7 @@
   let agents = $state([]);
   let selectedAgent = $state(null);
   let agentLog = $state({ stdout: "", status: "", recent: "" });
+  let parentJob = $state(null);
   let logAutoRefresh = $state(true);
   let searchQuery = $state("");
   let filterSource = $state("all");
@@ -66,9 +67,31 @@
     } catch { agentLog = { stdout: "(failed to load)", status: "", recent: "" }; }
   }
 
+  function jobIdFromTaskId(taskId) {
+    return taskId.startsWith("job-") ? taskId.slice(4) : null;
+  }
+
+  function siblingRuns(taskId) {
+    return agents
+      .filter(a => a.taskId === taskId || (a.source === "scheduled" && a.taskId.slice(4) === taskId.slice(4)))
+      .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+  }
+
+  async function loadParentJob(taskId) {
+    const jobId = jobIdFromTaskId(taskId);
+    if (!jobId) { parentJob = null; return; }
+    try {
+      const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+      if (r.ok) parentJob = await r.json();
+      else parentJob = null;
+    } catch { parentJob = null; }
+  }
+
   function selectAgent(run) {
     selectedAgent = run;
     loadLog(run.taskId);
+    if (run.source === "scheduled") loadParentJob(run.taskId);
+    else parentJob = null;
     if (logTimer) clearInterval(logTimer);
     if (run.status === "running" && logAutoRefresh) {
       logTimer = setInterval(() => loadLog(run.taskId), 3000);
@@ -213,6 +236,7 @@
               {:else}
                 <span class="agent-item-status-text">{run.status}</span>
               {/if}
+              <span class="agent-item-time">{relativeTime(run.startedAt)}</span>
             </div>
           </button>
         {/each}
@@ -281,6 +305,67 @@
               </div>
             {/if}
           </div>
+
+          {#if parentJob && selectedAgent?.source === "scheduled"}
+            <div class="parent-job-panel">
+              <div class="parent-job-header">
+                <span class="parent-job-title">Job: {parentJob.name}</span>
+                <button class="agent-link" onclick={() => onnavigate("scheduler")}>Edit</button>
+              </div>
+              <div class="parent-job-config">
+                <div class="parent-job-field">
+                  <span class="parent-job-label">Schedule</span>
+                  <span>{parentJob.humanCron || parentJob.cron}</span>
+                  <code class="parent-job-cron">{parentJob.cron}</code>
+                </div>
+                <div class="parent-job-field">
+                  <span class="parent-job-label">Tool / Model</span>
+                  <span>{parentJob.tool}{parentJob.model ? " / " + parentJob.model : ""}</span>
+                </div>
+                {#if parentJob.project}
+                  <div class="parent-job-field">
+                    <span class="parent-job-label">Project</span>
+                    <span class="parent-job-mono">{parentJob.project}</span>
+                  </div>
+                {/if}
+                {#if parentJob.mcpServers?.length}
+                  <div class="parent-job-field">
+                    <span class="parent-job-label">MCP</span>
+                    <span>{parentJob.mcpServers.join(", ")}</span>
+                  </div>
+                {/if}
+                {#if parentJob.costCap}
+                  <div class="parent-job-field">
+                    <span class="parent-job-label">Cost cap</span>
+                    <span>${parentJob.costCap}</span>
+                  </div>
+                {/if}
+                <div class="parent-job-field parent-job-prompt">
+                  <span class="parent-job-label">Prompt</span>
+                  <span>{parentJob.prompt.length > 200 ? parentJob.prompt.slice(0, 200) + "..." : parentJob.prompt}</span>
+                </div>
+              </div>
+
+              {#if siblingRuns(selectedAgent.taskId).length > 1}
+                <div class="parent-job-runs">
+                  <span class="parent-job-label">Run history ({siblingRuns(selectedAgent.taskId).length})</span>
+                  <div class="sibling-list">
+                    {#each siblingRuns(selectedAgent.taskId) as sib (sib.taskId + sib.startedAt)}
+                      <button
+                        class="sibling-item"
+                        class:sibling-active={sib.taskId === selectedAgent.taskId && sib.startedAt === selectedAgent.startedAt}
+                        onclick={() => selectAgent(sib)}
+                      >
+                        <span class="sibling-dot" class:dot-ok={sib.status === "completed" || sib.status === "running"} class:dot-fail={sib.status === "failed" || sib.status === "cancelled"}></span>
+                        <span class="sibling-time">{relativeTime(sib.startedAt)}</span>
+                        <span class="sibling-status">{sib.status}{sib.elapsed ? " · " + sib.elapsed : ""}</span>
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           {#if agentLog.status}
             <div class="agent-log">
@@ -394,6 +479,7 @@
   .agent-item-right { flex-shrink: 0; text-align: right; }
   .agent-item-elapsed { font-size: .75rem; font-weight: 600; color: var(--success); }
   .agent-item-status-text { font-size: .72rem; color: var(--text-muted); }
+  .agent-item-time { display: block; font-size: .65rem; color: var(--text-muted); margin-top: 1px; }
 
   /* Detail */
   .agent-detail { flex: 1; min-width: 0; }
@@ -424,6 +510,47 @@
     border-radius: 6px; vertical-align: middle; margin-left: 4px; text-transform: uppercase; letter-spacing: .3px;
   }
   .source-scheduled { background: #fef3c7; color: #92400e; }
+
+  /* Parent job panel */
+  .parent-job-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: .8rem; margin-bottom: .5rem;
+  }
+  .parent-job-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem;
+  }
+  .parent-job-title { font-size: .85rem; font-weight: 700; }
+  .parent-job-config { display: flex; flex-wrap: wrap; gap: .3rem .8rem; }
+  .parent-job-field { font-size: .78rem; }
+  .parent-job-label {
+    display: inline-block; font-size: .65rem; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .3px; margin-right: .3rem;
+  }
+  .parent-job-cron {
+    font-size: .68rem; background: var(--bg); padding: .1rem .3rem; border-radius: 3px;
+    margin-left: .3rem; color: var(--text-muted);
+  }
+  .parent-job-mono { font-family: monospace; font-size: .75rem; }
+  .parent-job-prompt {
+    flex-basis: 100%; margin-top: .3rem; font-size: .75rem; color: var(--text-secondary);
+    white-space: pre-wrap; line-height: 1.4;
+  }
+
+  .parent-job-runs { margin-top: .6rem; border-top: 1px solid var(--border); padding-top: .5rem; }
+  .sibling-list { display: flex; flex-direction: column; gap: .2rem; margin-top: .3rem; max-height: 150px; overflow-y: auto; }
+  .sibling-item {
+    display: flex; align-items: center; gap: .4rem; padding: .25rem .4rem;
+    background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+    font-family: inherit; font-size: .75rem; color: var(--text); cursor: pointer;
+    text-align: left; width: 100%;
+  }
+  .sibling-item:hover { background: var(--bg); }
+  .sibling-active { border-color: var(--primary); background: var(--primary-glow, rgba(99,102,241,.06)); }
+  .sibling-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
+  .sibling-dot.dot-ok { background: var(--success); }
+  .sibling-dot.dot-fail { background: var(--danger); }
+  .sibling-time { color: var(--text-muted); font-size: .7rem; }
+  .sibling-status { font-size: .7rem; color: var(--text-secondary); }
 
   .agent-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
   .agent-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 90%; max-width: 400px; }
