@@ -101,9 +101,14 @@
 
   <!-- Running agents -->
   {#if agentRuns.length > 0}
-    <div class="agents-panel" class:agents-active={agentRuns.some(r => r.status === "running")}>
-      <h3 class="agents-title">Agents ({agentRuns.filter(r => r.status === "running").length} running)</h3>
-      {#each agentRuns as run (run.taskId)}
+    {@const runningCount = agentRuns.filter(r => r.status === "running").length}
+    {@const recentRuns = [...agentRuns].sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)).slice(0, 4)}
+    <div class="agents-panel" class:agents-active={runningCount > 0}>
+      <div class="agents-header">
+        <h3 class="agents-title">Agents ({runningCount} running)</h3>
+        <button class="agents-viewall" onclick={() => onnavigate("agents")}>View all ({agentRuns.length})</button>
+      </div>
+      {#each recentRuns as run (run.taskId)}
         <div class="agent-row">
           {#if run.status === "running"}
             <span class="agent-pulse"></span>
@@ -113,7 +118,7 @@
             <span class="agent-dot agent-fail">&#10005;</span>
           {/if}
           <div class="agent-info">
-            <span class="agent-task">{run.taskId}</span>
+            <span class="agent-task">{run.taskTitle || run.taskId}</span>
             <span class="agent-meta">{run.tool}{run.model ? " · " + run.model : ""} · {run.status === "running" ? run.elapsed : run.status}</span>
           </div>
           {#if run.logPath}
@@ -334,7 +339,12 @@
   /* Agents panel */
   .agents-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; margin-bottom: 1rem; }
   .agents-panel.agents-active { border-color: var(--success); }
-  .agents-title { font-size: .85rem; font-weight: 600; color: var(--success); margin: 0 0 .5rem; }
+  .agents-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+  .agents-title { font-size: .85rem; font-weight: 600; color: var(--success); margin: 0; }
+  .agents-viewall {
+    background: none; border: none; color: var(--primary); font-size: .75rem;
+    cursor: pointer; font-family: inherit; text-decoration: underline;
+  }
   .agent-row { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; border-bottom: 1px solid var(--border); }
   .agent-row:last-child { border-bottom: none; }
   .agent-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; flex-shrink: 0; }

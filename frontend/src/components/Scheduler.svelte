@@ -4,6 +4,8 @@
   let jobs = $state([]);
   let boards = $state([]);
   let loading = $state(true);
+  let jobPage = $state(0);
+  const jobPageSize = 10;
   let showEditor = $state(false);
   let editingJob = $state(null);
   let deleteConfirm = $state(null);
@@ -206,11 +208,8 @@
 </script>
 
 <div class="scheduler-page">
-  <div class="page-bar">
-    <div>
-      <h2>Scheduler</h2>
-      <span class="page-subtitle">Run agents on a schedule &mdash; {jobs.length} job{jobs.length !== 1 ? 's' : ''}</span>
-    </div>
+  <div class="scheduler-toolbar">
+    <span class="scheduler-count">{jobs.length} job{jobs.length !== 1 ? 's' : ''}</span>
     <button class="btn-primary" onclick={openCreate}>+ New Job</button>
   </div>
 
@@ -223,8 +222,10 @@
       <button class="btn-primary" onclick={openCreate}>Create your first job</button>
     </div>
   {:else}
+    {@const totalJobPages = Math.ceil(jobs.length / jobPageSize)}
+    {@const pagedJobs = jobs.slice(jobPage * jobPageSize, (jobPage + 1) * jobPageSize)}
     <div class="job-list">
-      {#each jobs as job (job.id)}
+      {#each pagedJobs as job (job.id)}
         <div class="job-card" class:disabled={!job.enabled}>
           <div class="job-top">
             <div class="job-header">
@@ -282,7 +283,11 @@
             </div>
           {/if}
 
-          <div class="job-prompt-preview">{job.prompt.length > 140 ? job.prompt.slice(0, 140) + '...' : job.prompt}</div>
+          {#if job.lastOutput}
+            <div class="job-last-output">{job.lastOutput}</div>
+          {:else}
+            <div class="job-prompt-preview">{job.prompt.length > 140 ? job.prompt.slice(0, 140) + '...' : job.prompt}</div>
+          {/if}
 
           <div class="job-actions">
             <button class="btn-sm btn-run" onclick={() => handleTrigger(job.id)} disabled={job.lastStatus === 'running'}>
@@ -296,6 +301,14 @@
           </div>
         </div>
       {/each}
+
+      {#if totalJobPages > 1}
+        <div class="job-pagination">
+          <button class="job-page-btn" onclick={() => { jobPage = Math.max(0, jobPage - 1); }} disabled={jobPage === 0}>&laquo; Prev</button>
+          <span class="job-page-info">{jobPage + 1} / {totalJobPages}</span>
+          <button class="job-page-btn" onclick={() => { jobPage = Math.min(totalJobPages - 1, jobPage + 1); }} disabled={jobPage >= totalJobPages - 1}>Next &raquo;</button>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -484,18 +497,25 @@
 <style>
   .scheduler-page { padding: 0; }
 
-  .page-bar {
+  .scheduler-toolbar {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 16px 24px; background: white; border-bottom: 1px solid #e5e7eb;
+    padding: 12px 24px;
   }
-  .page-bar h2 { margin: 0; font-size: 18px; font-weight: 600; }
-  .page-subtitle { color: #6b7280; font-size: 13px; }
+  .scheduler-count { font-size: 13px; color: #6b7280; }
 
   .empty-state { text-align: center; padding: 80px 24px; color: #6b7280; }
   .empty-state p { margin: 8px 0; }
   .empty-state .hint { font-size: 13px; max-width: 400px; margin: 8px auto; }
 
-  .job-list { padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .job-list { padding: 12px 24px; display: flex; flex-direction: column; gap: 10px; }
+
+  .job-pagination { display: flex; align-items: center; justify-content: center; gap: .6rem; margin-top: .5rem; }
+  .job-page-btn {
+    background: #f3f4f6; border: 1px solid #e5e7eb; padding: 5px 12px;
+    border-radius: 5px; font-size: 12px; cursor: pointer;
+  }
+  .job-page-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .job-page-info { font-size: 12px; color: #6b7280; }
 
   .job-card {
     background: white; border: 1px solid #e5e7eb; border-radius: 8px;
@@ -506,7 +526,7 @@
 
   .job-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
   .job-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .job-name { font-weight: 600; font-size: 15px; }
+  .job-name { font-weight: 600; font-size: 14px; }
   .job-tool {
     background: #f3f4f6; color: #374151; font-size: 11px; font-weight: 500;
     padding: 2px 8px; border-radius: 10px; text-transform: uppercase;
@@ -546,6 +566,11 @@
     background: #f3f4f6; color: #6b7280; text-transform: capitalize;
   }
 
+  .job-last-output {
+    font-size: 12px; color: #374151; margin-bottom: 10px; padding: 6px 8px;
+    background: #f9fafb; border-radius: 4px; border: 1px solid #f3f4f6;
+    white-space: pre-wrap; max-height: 60px; overflow: hidden; line-height: 1.4;
+  }
   .job-prompt-preview {
     font-size: 13px; color: #4b5563; margin-bottom: 10px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
