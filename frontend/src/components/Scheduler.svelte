@@ -67,6 +67,9 @@
   });
 
   const cronPresets = [
+    { label: "Every minute", value: "* * * * *" },
+    { label: "Every 5 min", value: "*/5 * * * *" },
+    { label: "Every 15 min", value: "*/15 * * * *" },
     { label: "Every hour", value: "0 * * * *" },
     { label: "Every 6 hours", value: "0 */6 * * *" },
     { label: "Daily at 9am", value: "0 9 * * *" },
