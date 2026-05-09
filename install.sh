@@ -45,11 +45,25 @@ get_latest_version() {
 
 download() {
   local url="$1" dest="$2"
+  # Download to a sibling temp file then atomically `mv` over the
+  # destination. Two reasons:
+  #   1. Atomic — if curl fails midway, the existing binary at $dest is
+  #      untouched. (curl -o would have already truncated it.)
+  #   2. Fresh inode. macOS' syspolicyd tracks Gatekeeper trust per
+  #      inode; when curl/wget overwrites a file in place the inode is
+  #      preserved and any prior "blocked" verdict sticks even after
+  #      the bytes are replaced. Symptom: Killed: 9 on launch with
+  #      `load code signature error 2` in the system log, despite
+  #      `codesign --verify` reporting the new bytes as valid. mv from
+  #      a sibling temp file replaces the old inode entirely.
+  local tmp
+  tmp="$(mktemp "${dest}.XXXXXX")" || err "Could not create temp file in $(dirname "$dest")"
   if command -v curl &>/dev/null; then
-    curl -fsSL -o "$dest" "$url"
+    curl -fsSL -o "$tmp" "$url" || { rm -f "$tmp"; err "Download failed: $url"; }
   elif command -v wget &>/dev/null; then
-    wget -qO "$dest" "$url"
+    wget -qO "$tmp" "$url" || { rm -f "$tmp"; err "Download failed: $url"; }
   fi
+  mv -f "$tmp" "$dest"
 }
 
 main() {
