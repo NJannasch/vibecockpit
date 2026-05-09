@@ -455,6 +455,12 @@ func (i *Index) searchOnce(q string, opts SearchOpts) ([]Result, error) {
 
 	// content is column index 11 (0-based) in the virtual table after the
 	// host column was inserted between git_branch and modified in v3.
+	//
+	// gosec G201 false positive: the only piece formatted into the SQL
+	// here is `where`, which is built above from a fixed set of literal
+	// fragments ("message_fts MATCH ?", "provider IN (...)", etc.). All
+	// user-controlled values stay in `args` and reach the driver via ?
+	// placeholders.
 	stmt := fmt.Sprintf(`
 		SELECT session_id, message_idx, role, provider, project_name, project_path,
 		       model, git_branch, host, modified,
@@ -463,7 +469,7 @@ func (i *Index) searchOnce(q string, opts SearchOpts) ([]Result, error) {
 		FROM message_fts
 		WHERE %s
 		ORDER BY score
-		LIMIT ?`, strings.Join(where, " AND "))
+		LIMIT ?`, strings.Join(where, " AND ")) //nolint:gosec // see comment above; user values are parameterized
 
 	// Important: we hold a single-conn pool (see Open), so we must NOT
 	// open a second query while these rows are still live — that would

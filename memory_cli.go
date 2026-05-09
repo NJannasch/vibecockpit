@@ -13,112 +13,128 @@ import (
 // runMemory dispatches the `vibecockpit memory <subcmd>` family. Kept
 // in its own file to avoid further bloating main.go now that the CLI
 // surface is growing.
+//
+// Each subcommand is split into its own function that returns an error;
+// runMemory does the os.Exit(1) at the top level so the deferred
+// idx.Close() inside subcommands actually runs (otherwise gocritic's
+// exitAfterDefer fires).
 func runMemory(providers []provider.Provider, args []string) {
+	if err := dispatchMemory(providers, args); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+}
+
+func dispatchMemory(providers []provider.Provider, args []string) error {
 	if len(args) == 0 {
 		printMemoryUsage()
-		os.Exit(1)
+		return fmt.Errorf("no subcommand")
 	}
 	idxPath, err := memory.DefaultPath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not resolve memory path: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("could not resolve memory path: %w", err)
 	}
 
 	switch args[0] {
 	case "stats":
-		idx, err := memory.Open(idxPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open: %v\n", err)
-			os.Exit(1)
-		}
-		defer idx.Close()
-		st, err := idx.Stats()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "stats: %v\n", err)
-			os.Exit(1)
-		}
-		_ = json.NewEncoder(os.Stdout).Encode(st)
-
+		return cmdMemoryStats(idxPath)
 	case "reindex":
-		idx, err := memory.Open(idxPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open: %v\n", err)
-			os.Exit(1)
-		}
-		defer idx.Close()
-		fmt.Fprintln(os.Stderr, "Indexing every provider's transcripts (this may take a moment)…")
-		run := memory.NewIndexer(idx).IndexAll(context.Background(), providers)
-		fmt.Printf("indexed=%d  skipped=%d  removed=%d  errors=%d  duration=%s\n",
-			run.Indexed, run.Skipped, run.Removed, run.Errors, run.Duration)
-		if run.LastError != "" {
-			fmt.Fprintf(os.Stderr, "last error: %s\n", run.LastError)
-		}
-
+		return cmdMemoryReindex(idxPath, providers)
 	case "search":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: vibecockpit memory search <query>")
-			os.Exit(1)
+			return fmt.Errorf("usage: vibecockpit memory search <query>")
 		}
-		idx, err := memory.Open(idxPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open: %v\n", err)
-			os.Exit(1)
-		}
-		defer idx.Close()
-		results, err := idx.Search(args[1], memory.SearchOpts{Limit: 20})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "search: %v\n", err)
-			os.Exit(1)
-		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(results)
-
+		return cmdMemorySearch(idxPath, args[1])
 	case "export":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: vibecockpit memory export <path>")
-			os.Exit(1)
+			return fmt.Errorf("usage: vibecockpit memory export <path>")
 		}
-		idx, err := memory.Open(idxPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open: %v\n", err)
-			os.Exit(1)
-		}
-		defer idx.Close()
-		if err := idx.Export(args[1]); err != nil {
-			fmt.Fprintf(os.Stderr, "export: %v\n", err)
-			os.Exit(1)
-		}
-		fi, _ := os.Stat(args[1])
-		var size int64
-		if fi != nil {
-			size = fi.Size()
-		}
-		fmt.Printf("Exported %s (%d bytes)\n", args[1], size)
-
+		return cmdMemoryExport(idxPath, args[1])
 	case "import":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: vibecockpit memory import <path>")
-			os.Exit(1)
+			return fmt.Errorf("usage: vibecockpit memory import <path>")
 		}
-		idx, err := memory.Open(idxPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open: %v\n", err)
-			os.Exit(1)
-		}
-		defer idx.Close()
-		added, err := idx.Import(args[1])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "import: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Imported %s (%d new sessions; existing entries kept as-is)\n", args[1], added)
-
+		return cmdMemoryImport(idxPath, args[1])
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand: %q\n", args[0])
 		printMemoryUsage()
-		os.Exit(1)
+		return fmt.Errorf("unknown subcommand: %q", args[0])
 	}
+}
+
+func cmdMemoryStats(idxPath string) error {
+	idx, err := memory.Open(idxPath)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	defer func() { _ = idx.Close() }()
+	st, err := idx.Stats()
+	if err != nil {
+		return fmt.Errorf("stats: %w", err)
+	}
+	return json.NewEncoder(os.Stdout).Encode(st)
+}
+
+func cmdMemoryReindex(idxPath string, providers []provider.Provider) error {
+	idx, err := memory.Open(idxPath)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	defer func() { _ = idx.Close() }()
+	fmt.Fprintln(os.Stderr, "Indexing every provider's transcripts (this may take a moment)…")
+	run := memory.NewIndexer(idx).IndexAll(context.Background(), providers)
+	fmt.Printf("indexed=%d  skipped=%d  removed=%d  errors=%d  duration=%s\n",
+		run.Indexed, run.Skipped, run.Removed, run.Errors, run.Duration)
+	if run.LastError != "" {
+		fmt.Fprintf(os.Stderr, "last error: %s\n", run.LastError)
+	}
+	return nil
+}
+
+func cmdMemorySearch(idxPath, query string) error {
+	idx, err := memory.Open(idxPath)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	defer func() { _ = idx.Close() }()
+	results, err := idx.Search(query, memory.SearchOpts{Limit: 20})
+	if err != nil {
+		return fmt.Errorf("search: %w", err)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(results)
+}
+
+func cmdMemoryExport(idxPath, dest string) error {
+	idx, err := memory.Open(idxPath)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	defer func() { _ = idx.Close() }()
+	if err := idx.Export(dest); err != nil {
+		return fmt.Errorf("export: %w", err)
+	}
+	fi, _ := os.Stat(dest)
+	var size int64
+	if fi != nil {
+		size = fi.Size()
+	}
+	fmt.Printf("Exported %s (%d bytes)\n", dest, size)
+	return nil
+}
+
+func cmdMemoryImport(idxPath, src string) error {
+	idx, err := memory.Open(idxPath)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	defer func() { _ = idx.Close() }()
+	added, err := idx.Import(src)
+	if err != nil {
+		return fmt.Errorf("import: %w", err)
+	}
+	fmt.Printf("Imported %s (%d new sessions; existing entries kept as-is)\n", src, added)
+	return nil
 }
 
 func printMemoryUsage() {
