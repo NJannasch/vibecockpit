@@ -43,6 +43,8 @@ func main() {
 	webFlag := flag.Bool("web", false, "start the web UI (opens in browser)")
 	mcpFlag := flag.Bool("mcp", false, "start as MCP server (JSON-RPC over stdio)")
 	portFlag := flag.Int("port", 3456, "port for the web UI")
+	bindFlag := flag.String("bind", "127.0.0.1", "address to bind the web UI to (use 0.0.0.0 for LAN, requires --token)")
+	tokenFlag := flag.String("token", "", "bearer token required for non-loopback requests (or set VIBECOCKPIT_TOKEN)")
 	installFlag := flag.Bool("install", false, "install binary to ~/.local/bin and create desktop entry")
 	uninstallFlag := flag.Bool("uninstall", false, "remove the installed binary, app launcher, and autostart service")
 	autostartFlag := flag.Bool("autostart", false, "register as a login service (systemd/launchd)")
@@ -115,7 +117,16 @@ func main() {
 	}
 
 	if *webFlag {
-		if err := web.Start(cfg, providers, *portFlag, version); err != nil {
+		token := *tokenFlag
+		if token == "" {
+			token = os.Getenv("VIBECOCKPIT_TOKEN")
+		}
+		if err := web.Start(cfg, providers, web.StartOpts{
+			Port:    *portFlag,
+			Bind:    *bindFlag,
+			Token:   token,
+			Version: version,
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

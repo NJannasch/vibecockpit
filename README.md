@@ -203,6 +203,58 @@ VibeCockpit extracts token usage from your session files and estimates costs usi
 | Antigravity | Conversations encrypted, no token data | N/A |
 | Remote (SSH) | Not yet supported | — |
 
+## Remote / Headless Mode
+
+VibeCockpit can run headless on a server (e.g. a home lab or VPS) and act as a central memory hub for multiple laptops.
+
+```bash
+# On the server — bind to LAN, require a token
+export VIBECOCKPIT_TOKEN=$(openssl rand -hex 32)
+vibecockpit --web --bind 0.0.0.0 --port 3456 --autostart
+
+# On each laptop — pull memory periodically and ship it to the server
+vibecockpit memory export ~/.cache/vc.db
+curl -X POST -H "Authorization: Bearer $VIBECOCKPIT_TOKEN" \
+  -F "file=@$HOME/.cache/vc.db" \
+  http://server.local:3456/api/memory/import
+```
+
+By default the web UI binds to `127.0.0.1` only. `--bind 0.0.0.0` (or any non-loopback address) requires `--token` (or `VIBECOCKPIT_TOKEN`); VibeCockpit refuses to start without one — there's no other auth on the API.
+
+For sensitive networks, terminate TLS in front of VibeCockpit (Caddy, nginx, Traefik, Tailscale Funnel) rather than exposing plain HTTP. Loopback requests (including SSH-tunneled ones) still bypass the token, so `ssh -L 3456:localhost:3456 server` keeps working without any client config.
+
+### MCP over HTTP
+
+When `enable_mcp: true` is set in `config.yaml`, the same MCP toolset that `vibecockpit --mcp` exposes over stdio is also served at `POST /mcp` (the [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) transport). Agents on remote machines can hit this endpoint to query the server's memory index without each laptop having to maintain its own copy.
+
+Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "vibecockpit-remote": {
+      "url": "http://server.local:3456/mcp",
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
+    }
+  }
+}
+```
+
+Cursor's `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "vibecockpit-remote": {
+      "url": "http://server.local:3456/mcp",
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
+    }
+  }
+}
+```
+
+Once configured, `search_memory` and `get_session_context` queries from any client hit the central index — every machine sees the same cross-tool memory.
+
 ## Contributing
 
 VibeCockpit is built with **Go** (backend + TUI) and **Svelte 5** (web UI).
@@ -259,6 +311,8 @@ vibecockpit [flags]
 
   --web                Start the web UI (opens in browser)
   --port int           Port for the web UI (default: 3456)
+  --bind string        Address to bind the web UI to (default: 127.0.0.1; use 0.0.0.0 for LAN)
+  --token string       Bearer token required for non-loopback requests (or set VIBECOCKPIT_TOKEN)
   --list               List all sessions (table format)
   --list --json        List all sessions (JSON format)
   --version            Print version
