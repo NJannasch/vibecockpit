@@ -15,6 +15,7 @@ import (
 	"vibecockpit/internal/config"
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
+	"vibecockpit/internal/memory"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/sanitize"
 	"vibecockpit/internal/scanner"
@@ -29,16 +30,25 @@ type Server struct {
 	workspaceDir string
 	audit        *audit.Logger
 	scheduler    *scheduler.Scheduler
+	mem          *memory.Index   // nil if init failed; search_memory still responds, just with no hits
+	memIndexer   *memory.Indexer
 }
 
-func NewServer(providers []provider.Provider, version, workspaceDir string, cfg *config.Config) *Server {
-	return &Server{
+// NewServer wires up the MCP handlers. Pass mem=nil when the memory
+// index is unavailable; the server still serves the rest of the API.
+func NewServer(providers []provider.Provider, version, workspaceDir string, cfg *config.Config, mem *memory.Index) *Server {
+	s := &Server{
 		providers:    providers,
 		version:      version,
 		workspaceDir: workspaceDir,
 		audit:        audit.NewLogger(),
 		scheduler:    scheduler.New(cfg),
+		mem:          mem,
 	}
+	if mem != nil {
+		s.memIndexer = memory.NewIndexer(mem)
+	}
+	return s
 }
 
 // Run starts the MCP server, reading JSON-RPC from stdin and writing to stdout.
@@ -126,6 +136,54 @@ func (s *Server) toolDefinitions() []map[string]any {
 					},
 				},
 				"required": []string{"query"},
+			},
+		},
+		{
+			"name":        "search_memory",
+			"description": "Full-text search across the *content* of every transcript across every tool — Claude Code, Claude Desktop, Codex, Cursor, etc. Use this to recall what you (or a past agent) actually said about a topic. Returns sanitized snippets with the matched terms highlighted via <mark> tags, plus the session_id you can pass to get_session_detail to read the full conversation.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{
+					"query": map[string]any{
+						"type":        "string",
+						"description": "FTS5 search query. Examples: 'auth bug', '\"jwt validation\"', 'auth NOT okta', 'migrat*'. Porter-stemmed (auth matches authenticate). Tokens with punctuation ('example.com', 'v1.2.3', 'feat/login') are auto-quoted on retry, so they Just Work without manual escaping. Required.",
+					},
+					"provider": map[string]any{
+						"type":        "string",
+						"description": "Optional comma-separated providers to limit the search ('claude,cursor'). Omit to search everything.",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Optional project name substring to narrow results.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Maximum results to return. Default 10.",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			"name":        "get_session_context",
+			"description": "Read a window of messages around a specific point in a session — typically called after search_memory hits a session at a particular message_idx, to see what was said immediately before/after. Returns up to (2*window+1) sanitized messages with role, timestamp, and content; the result whose isCenter is true is the anchor message.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{
+					"session_id": map[string]any{
+						"type":        "string",
+						"description": "Session id (from list_sessions or search_memory).",
+					},
+					"center": map[string]any{
+						"type":        "integer",
+						"description": "Anchor message index (0-based; from search_memory's messageIdx).",
+					},
+					"window": map[string]any{
+						"type":        "integer",
+						"description": "How many messages on each side to include. Default 3 (so 7 total). Capped at 50.",
+					},
+				},
+				"required": []string{"session_id", "center"},
 			},
 		},
 		{
@@ -483,6 +541,34 @@ func (s *Server) handleToolCall(w io.Writer, req *jsonRPCRequest) {
 			return
 		}
 		result, count = s.searchSessions(args.Query)
+
+	case "search_memory":
+		var args struct {
+			Query    string `json:"query"`
+			Provider string `json:"provider"`
+			Project  string `json:"project"`
+			Limit    int    `json:"limit"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		result, count = s.searchMemory(args.Query, args.Provider, args.Project, args.Limit)
+
+	case "get_session_context":
+		var args struct {
+			SessionID string `json:"session_id"`
+			Center    int    `json:"center"`
+			Window    int    `json:"window"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			writeError(w, req.ID, -32602, "Invalid arguments: "+err.Error())
+			return
+		}
+		if args.Window == 0 {
+			args.Window = 3
+		}
+		result, count = s.getSessionContext(args.SessionID, args.Center, args.Window)
 
 	case "get_session_detail":
 		var args struct {
@@ -1067,6 +1153,63 @@ func (s *Server) listSessions(providerFilter string, limit int) (any, int) {
 		}
 	}
 	return filtered, len(filtered)
+}
+
+// searchMemory runs an FTS5 query against the cross-tool transcript
+// index. Returns a "memory unavailable" placeholder when the index
+// failed to open at startup so MCP clients still get a useful response.
+func (s *Server) searchMemory(query, providerCSV, project string, limit int) (any, int) {
+	if s.mem == nil {
+		return map[string]any{
+			"available": false,
+			"hint":      "Memory index is not initialized. Try running `vibecockpit memory reindex` or check ~/.config/vibecockpit/cache/memory.db.",
+			"results":   []any{},
+		}, 0
+	}
+	// First call after MCP startup is the worst-case latency since we
+	// haven't indexed yet. Kick off an async pass on first use; subsequent
+	// queries get the warm cache. Cheap because IndexAll uses single-flight.
+	if s.memIndexer != nil {
+		go s.memIndexer.IndexAll(context.Background(), s.providers)
+	}
+
+	opts := memory.SearchOpts{Limit: limit}
+	if providerCSV != "" {
+		opts.Providers = strings.Split(providerCSV, ",")
+	}
+	if project != "" {
+		opts.ProjectLike = "%" + project + "%"
+	}
+	results, err := s.mem.Search(query, opts)
+	if err != nil {
+		return map[string]any{"available": true, "error": err.Error(), "results": []any{}}, 0
+	}
+	if results == nil {
+		results = []memory.Result{}
+	}
+	return map[string]any{
+		"available": true,
+		"query":     query,
+		"results":   results,
+	}, len(results)
+}
+
+// getSessionContext fetches a ±window message window from a session.
+func (s *Server) getSessionContext(sessionID string, center, window int) (any, int) {
+	if s.mem == nil {
+		return map[string]any{"available": false, "messages": []any{}}, 0
+	}
+	msgs, err := s.mem.Context(sessionID, center, window)
+	if err != nil {
+		return map[string]any{"available": true, "error": err.Error(), "messages": []any{}}, 0
+	}
+	return map[string]any{
+		"available": true,
+		"sessionId": sessionID,
+		"center":    center,
+		"window":    window,
+		"messages":  msgs,
+	}, len(msgs)
 }
 
 func (s *Server) searchSessions(query string) (any, int) {

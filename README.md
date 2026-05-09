@@ -60,6 +60,7 @@ That's it. VibeCockpit auto-detects which tools you have installed and shows all
 ## Features
 
 - **Dashboard** — overview of all tools with session counts, active indicators, and recent activity
+- **Cross-tool memory** — full-text search across the *content* of every transcript across every tool (FTS5-backed), exposed via the web UI, the `vibecockpit memory search` CLI, and the `search_memory` MCP tool. Any agent connected via MCP can recall what you (or a past agent) said in any prior conversation — Claude Code → Cursor → Codex all share the same memory substrate. Index file (`~/.config/vibecockpit/cache/memory.db`) can be `export`ed and `import`ed to ship your memory to another machine.
 - **Cost tracking** — see what your AI coding tools cost you across all providers. Heatmap, trend charts, per-project breakdown, and plan recommendations that tell you which subscription tier actually fits your usage
 - **Fuzzy search** — type `hermes` or `model:opus branch:main active` to find anything
 - **Filter chips** — click to filter by tool, model, or active status
@@ -266,6 +267,13 @@ vibecockpit [flags]
   --autostart          Start on login (systemd/launchd)
   --remove-autostart   Remove autostart service
   --yes                Skip confirmation prompts
+
+vibecockpit memory <subcommand>
+  reindex              Walk every provider, write transcript content into the FTS5 index
+  search <query>       FTS5 search (porter stemmer; supports prefix, phrase, AND/OR/NOT)
+  stats                Document count + index size on disk
+  export <path>        Snapshot the index to <path> (e.g. for moving to another machine)
+  import <path>        Merge another machine's memory.db; local entries win on conflict
 ```
 
 ## License

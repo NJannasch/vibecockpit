@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/launcher"
+	"vibecockpit/internal/memory"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/scanner"
 	"vibecockpit/internal/scheduler"
@@ -54,6 +56,9 @@ type server struct {
 	scheduler      *scheduler.Scheduler
 	chatMgr        *chat.Manager
 	lastSeenAgents map[string]string
+
+	memIndex   *memory.Index   // nil if init failed; search endpoints will return empty
+	memIndexer *memory.Indexer
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -129,6 +134,27 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 		}(),
 	}
 
+	// Memory index — best-effort. If it can't open we log once and let
+	// /api/memory/search return an empty result set; the rest of the
+	// server keeps working.
+	if !isDemo {
+		if path, err := memory.DefaultPath(); err == nil {
+			if mi, err := memory.Open(path); err == nil {
+				s.memIndex = mi
+				s.memIndexer = memory.NewIndexer(mi)
+				// First indexing pass on boot, in the background so the
+				// HTTP listener comes up immediately.
+				go s.memIndexer.IndexAll(context.Background(), providers)
+				// Re-index whenever a real rescan happens.
+				s.sessionCache.onRefresh = func(_ []provider.Session) {
+					_ = s.memIndexer.IndexAll(context.Background(), providers)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "memory index disabled: %v\n", err)
+			}
+		}
+	}
+
 	if cfg.Terminal == "default" || cfg.Terminal == "" {
 		cfg.Terminal = detectTerminal()
 		_ = cfg.Save()
@@ -147,6 +173,14 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/stats", s.handleStats)
 	mux.HandleFunc("GET /api/inventory/file", s.handleInventoryFile)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
+	mux.HandleFunc("GET /api/memory/search", s.handleMemorySearch)
+	mux.HandleFunc("GET /api/memory/stats", s.handleMemoryStats)
+	mux.HandleFunc("GET /api/memory/context", s.handleMemoryContext)
+	mux.HandleFunc("GET /api/memory/export", s.handleMemoryExport)
+	mux.HandleFunc("POST /api/memory/import", s.handleMemoryImport)
+	mux.HandleFunc("DELETE /api/memory/session", s.handleMemoryDelete)
+	mux.HandleFunc("GET /api/memory/tombstones", s.handleMemoryTombstones)
+	mux.HandleFunc("POST /api/memory/untombstone", s.handleMemoryUntombstone)
 	mux.HandleFunc("GET /api/mcp-audit", s.handleMCPAudit)
 	mux.HandleFunc("GET /api/boards", s.handleGetBoards)
 	mux.HandleFunc("GET /api/boards/{name}", s.handleGetBoard)
@@ -876,6 +910,247 @@ func (s *server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *server) handleMemorySearch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.memIndex == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []memory.Result{}, "available": false})
+		return
+	}
+	q := r.URL.Query().Get("q")
+	opts := memory.SearchOpts{}
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			opts.Limit = n
+		}
+	}
+	if p := r.URL.Query().Get("provider"); p != "" {
+		opts.Providers = strings.Split(p, ",")
+	}
+	if pl := r.URL.Query().Get("project"); pl != "" {
+		opts.ProjectLike = "%" + pl + "%"
+	}
+
+	results, err := s.memIndex.Search(q, opts)
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	if results == nil {
+		results = []memory.Result{}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"results": results, "available": true, "query": q})
+}
+
+func (s *server) handleMemoryContext(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.memIndex == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"available": false, "messages": []any{}})
+		return
+	}
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		jsonError(w, "session_id is required", 400)
+		return
+	}
+	center := 0
+	if c := r.URL.Query().Get("center"); c != "" {
+		if n, err := strconv.Atoi(c); err == nil {
+			center = n
+		}
+	}
+	window := 3
+	if v := r.URL.Query().Get("window"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			window = n
+		}
+	}
+	msgs, err := s.memIndex.Context(sessionID, center, window)
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	if msgs == nil {
+		msgs = []memory.ContextMessage{}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"available": true,
+		"sessionId": sessionID,
+		"center":    center,
+		"window":    window,
+		"messages":  msgs,
+	})
+}
+
+func (s *server) handleMemoryStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.memIndex == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"available": false})
+		return
+	}
+	st, err := s.memIndex.Stats()
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	resp := map[string]any{
+		"available":   true,
+		"sessions":    st.Sessions,
+		"messages":    st.Messages,
+		"bytesOnDisk": st.BytesOnDisk,
+		"path":        st.Path,
+	}
+	if s.memIndexer != nil {
+		resp["lastRun"] = s.memIndexer.LastRun()
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// handleMemoryExport streams a VACUUM INTO snapshot of the index as a
+// .db attachment. Cross-machine workflow: download here, USB/cloud, then
+// POST to /api/memory/import on the other machine.
+func (s *server) handleMemoryExport(w http.ResponseWriter, r *http.Request) {
+	if s.memIndex == nil {
+		jsonError(w, "memory index unavailable", 503)
+		return
+	}
+	tmp, err := os.CreateTemp("", "memory-export-*.db")
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	tmpPath := tmp.Name()
+	_ = tmp.Close()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	// Export overwrites; we just made the file as a temp slot.
+	if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	if err := s.memIndex.Export(tmpPath); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+
+	host, _ := os.Hostname()
+	if host == "" {
+		host = "vibecockpit"
+	}
+	filename := fmt.Sprintf("vibecockpit-memory-%s-%s.db",
+		host, time.Now().UTC().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	http.ServeFile(w, r, tmpPath)
+}
+
+// handleMemoryImport accepts a multipart upload of a memory.db and
+// merges it via Index.Import (local-wins, tombstone-respecting,
+// idempotent across repeated uploads of the same file).
+func (s *server) handleMemoryImport(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.memIndex == nil {
+		jsonError(w, "memory index unavailable", 503)
+		return
+	}
+	// 200 MB cap is plenty for FTS5 transcripts; export of ~3000 sessions
+	// is in the single-digit MB range.
+	if err := r.ParseMultipartForm(200 << 20); err != nil {
+		jsonError(w, "parse upload: "+err.Error(), 400)
+		return
+	}
+	file, hdr, err := r.FormFile("file")
+	if err != nil {
+		jsonError(w, "missing 'file' field", 400)
+		return
+	}
+	defer file.Close()
+
+	tmp, err := os.CreateTemp("", "memory-import-*.db")
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if _, err := io.Copy(tmp, file); err != nil {
+		_ = tmp.Close()
+		jsonError(w, "save upload: "+err.Error(), 500)
+		return
+	}
+	_ = tmp.Close()
+
+	added, err := s.memIndex.Import(tmpPath)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"added":    added,
+		"filename": hdr.Filename,
+		"size":     hdr.Size,
+	})
+}
+
+// handleMemoryDelete removes one session from the index AND writes a
+// tombstone, so it stays gone across re-indexes and future imports.
+// Restore via POST /api/memory/untombstone.
+func (s *server) handleMemoryDelete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.memIndex == nil {
+		jsonError(w, "memory index unavailable", 503)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		jsonError(w, "id is required", 400)
+		return
+	}
+	if err := s.memIndex.Delete(id); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"deleted": id})
+}
+
+// handleMemoryTombstones lists every excluded session — what the user
+// deleted, with snapshotted metadata for labeling.
+func (s *server) handleMemoryTombstones(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.memIndex == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"available": false, "tombstones": []any{}})
+		return
+	}
+	rows, err := s.memIndex.ListTombstones()
+	if err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	if rows == nil {
+		rows = []memory.Tombstone{}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"available": true, "tombstones": rows})
+}
+
+// handleMemoryUntombstone removes the tombstone for one session so it
+// can be re-added by the next IndexAll or Import.
+func (s *server) handleMemoryUntombstone(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.memIndex == nil {
+		jsonError(w, "memory index unavailable", 503)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		jsonError(w, "id is required", 400)
+		return
+	}
+	if err := s.memIndex.Untombstone(id); err != nil {
+		jsonError(w, err.Error(), 500)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"restored": id})
 }
 
 func (s *server) handleMCPAudit(w http.ResponseWriter, r *http.Request) {

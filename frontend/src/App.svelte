@@ -18,6 +18,7 @@
   import { saveConfig, launchSession, deleteSession, createProject as apiCreateProject, testSSH, startSecretScan, getScanStatus } from "./lib/api.js";
   import { shortModel, relativeTime, providerColors, providerLabels, dateGroup } from "./lib/utils.js";
   import Dashboard from "./components/Dashboard.svelte";
+  import Memory from "./components/Memory.svelte";
   import CostsDashboard from "./components/CostsDashboard.svelte";
   import ToolInventory from "./components/ToolInventory.svelte";
   import BoardView from "./components/BoardView.svelte";
@@ -762,6 +763,10 @@
       <span class="sidebar-label">Sessions</span>
       {#if activeSessionCount > 0}<span class="sidebar-count sidebar-count-active">{activeSessionCount}</span>{/if}
     </button>
+    <button class="sidebar-btn" class:active={page === "memory"} onclick={() => navigateTo("memory")} title="Full-text search across every transcript">
+      <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/><path d="M11 8v3l2 2" stroke-linecap="round"/></svg>
+      <span class="sidebar-label">Memory</span>
+    </button>
     <button class="sidebar-btn" class:active={page === "costs"} onclick={() => navigateTo("costs")}>
       <svg class="sidebar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       <span class="sidebar-label">Costs</span>
@@ -1143,6 +1148,8 @@
   <main class="chat-main-container">
     <ChatView />
   </main>
+{:else if page === "memory"}
+  <Memory onlaunch={(id, prov) => launch(id, prov)} />
 {:else if page === "costs"}
   <div class="page-bar">
     <h1 class="page-bar-title">Costs</h1>

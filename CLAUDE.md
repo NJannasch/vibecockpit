@@ -36,9 +36,10 @@ Always run `make check` locally before pushing.
 internal/
 ├── board/       # YAML kanban boards, task CRUD, history, discovery
 ├── runner/      # Agent spawning, ralph loop, worktree isolation, tracker
-├── mcp/         # MCP server (13+ tools: sessions, boards, costs, inventory)
+├── mcp/         # MCP server (14+ tools: sessions, boards, costs, inventory, search_memory)
+├── memory/      # FTS5 cross-tool transcript index (search_memory + /api/memory/search)
 ├── web/         # HTTP server, REST API, scan cache, SPA handler
-├── provider/    # Session scanners (claude, codex, copilot, gemini, opencode, cursor)
+├── provider/    # Session scanners (claude, claude-desktop, codex, copilot, gemini, opencode, cursor, antigravity)
 ├── costs/       # Token pricing, cost estimation, aggregation
 ├── inventory/   # Tool/extension/MCP/config scanning
 ├── audit/       # MCP tool call audit log
