@@ -141,5 +141,3 @@ jobs:
             --notes-file /tmp/release-notes.md \
             --generate-notes \
             dist/vibecockpit-*
-
-            ---
