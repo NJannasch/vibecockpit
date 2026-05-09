@@ -19,6 +19,11 @@ type scanCache struct {
 	lastScan    time.Time
 	dirModTimes map[string]time.Time
 	cachePath   string
+
+	// onRefresh fires after a real rescan completes (i.e. not when
+	// returning the in-memory or on-disk cache). Used by the memory
+	// indexer to keep FTS in sync with what the dashboard sees.
+	onRefresh func([]provider.Session)
 }
 
 type cacheFile struct {
@@ -94,6 +99,14 @@ func (sc *scanCache) getSessions(forceRefresh bool) []provider.Session {
 	sc.sessions = all
 	sc.lastScan = time.Now()
 	sc.saveToDisk()
+
+	if sc.onRefresh != nil {
+		// Snapshot before releasing the lock; callback runs synchronously
+		// only if it's cheap. Memory indexing is wrapped in a goroutine
+		// at the wiring site, so this stays fast.
+		snap := append([]provider.Session(nil), sc.sessions...)
+		go sc.onRefresh(snap)
+	}
 	return sc.sessions
 }
 

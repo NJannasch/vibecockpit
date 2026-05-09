@@ -18,6 +18,7 @@ import (
 	"vibecockpit/internal/install"
 	"vibecockpit/internal/launcher"
 	mcpserver "vibecockpit/internal/mcp"
+	"vibecockpit/internal/memory"
 	"vibecockpit/internal/plugin"
 	"vibecockpit/internal/plugin/builtin"
 	"vibecockpit/internal/plugin/remote"
@@ -126,7 +127,18 @@ func main() {
 			fmt.Fprintln(os.Stderr, "MCP server is disabled. Enable it in config.yaml:\n\n  enable_mcp: true")
 			os.Exit(1)
 		}
-		srv := mcpserver.NewServer(providers, version, cfg.NewProjectDir, cfg)
+		// Memory index — best-effort. Lets the MCP server expose
+		// search_memory; if it can't open, search_memory returns an
+		// "unavailable" placeholder and the rest still works.
+		var memIdx *memory.Index
+		if path, err := memory.DefaultPath(); err == nil {
+			if mi, err := memory.Open(path); err == nil {
+				memIdx = mi
+			} else {
+				fmt.Fprintf(os.Stderr, "memory index unavailable: %v\n", err)
+			}
+		}
+		srv := mcpserver.NewServer(providers, version, cfg.NewProjectDir, cfg, memIdx)
 		if err := srv.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
 			os.Exit(1)
@@ -141,6 +153,11 @@ func main() {
 
 	if args := flag.Args(); len(args) > 0 && args[0] == "run" {
 		runTask(cfg, args[1:])
+		return
+	}
+
+	if args := flag.Args(); len(args) > 0 && args[0] == "memory" {
+		runMemory(providers, args[1:])
 		return
 	}
 

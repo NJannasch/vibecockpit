@@ -416,8 +416,8 @@
         <span class="field-hint">Comma-separated. The agent gets access to these MCP servers during the run.</span>
       </div>
 
-      <div class="form-group">
-        <label>Allowed actions</label>
+      <fieldset class="form-group form-group-fieldset">
+        <legend>Allowed actions</legend>
         <div class="perm-grid">
           {#each [
             { id: "read-files", label: "Read files", hint: "Read project files and code" },
@@ -444,7 +444,7 @@
           {/each}
         </div>
         <span class="field-hint">Controls what the agent is allowed to do. Restrictive settings are safer for automated runs.</span>
-      </div>
+      </fieldset>
 
       <div class="form-group">
         <label class="toggle-row">
@@ -454,6 +454,7 @@
             onclick={() => { form.enabled = !form.enabled; }}
             role="switch"
             aria-checked={form.enabled}
+            aria-label={form.enabled ? "Disable scheduled job" : "Enable scheduled job"}
             type="button"
           >
             <span class="toggle-knob"></span>
@@ -656,6 +657,14 @@
   .form-group label {
     display: block; font-size: 13px; font-weight: 500;
     color: #374151; margin-bottom: 4px;
+  }
+  /* fieldset variant for grouped checkboxes — strip browser defaults so it
+     looks like the surrounding .form-group divs, with <legend> styled
+     identically to the inline labels above. */
+  .form-group-fieldset { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+  .form-group-fieldset > legend {
+    font-size: 13px; font-weight: 500; color: #374151;
+    margin-bottom: 4px; padding: 0;
   }
   .form-group input, .form-group select, .form-group textarea {
     width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;

@@ -15,7 +15,7 @@
   let knownProjects = $state([]);
   let modelsByProvider = $state({});
   let allModels = $state([]);
-  let messagesEnd;
+  let messagesEnd = $state();
 
   async function loadSessionData() {
     try {
