@@ -33,6 +33,20 @@ import (
 // index is always cheap to rebuild from the underlying transcripts.
 const schemaVersion = 3
 
+// searchSQLTemplate is the read-side query, with a single %s slot for
+// the dynamically composed WHERE clause. Lifting this out of the
+// function body keeps the actual fmt.Sprintf call to a single line so
+// the gosec G201 nolint directive can sit next to it.
+const searchSQLTemplate = `
+		SELECT session_id, message_idx, role, provider, project_name, project_path,
+		       model, git_branch, host, modified,
+		       snippet(message_fts, 11, '<mark>', '</mark>', '…', 14) AS snippet,
+		       bm25(message_fts) AS score
+		FROM message_fts
+		WHERE %s
+		ORDER BY score
+		LIMIT ?`
+
 // DefaultPath is where the index lives when no override is given.
 func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -461,15 +475,7 @@ func (i *Index) searchOnce(q string, opts SearchOpts) ([]Result, error) {
 	// fragments ("message_fts MATCH ?", "provider IN (...)", etc.). All
 	// user-controlled values stay in `args` and reach the driver via ?
 	// placeholders.
-	stmt := fmt.Sprintf(`
-		SELECT session_id, message_idx, role, provider, project_name, project_path,
-		       model, git_branch, host, modified,
-		       snippet(message_fts, 11, '<mark>', '</mark>', '…', 14) AS snippet,
-		       bm25(message_fts) AS score
-		FROM message_fts
-		WHERE %s
-		ORDER BY score
-		LIMIT ?`, strings.Join(where, " AND ")) //nolint:gosec // see comment above; user values are parameterized
+	stmt := fmt.Sprintf(searchSQLTemplate, strings.Join(where, " AND ")) //nolint:gosec // see comment above; user values are parameterized
 
 	// Important: we hold a single-conn pool (see Open), so we must NOT
 	// open a second query while these rows are still live — that would
