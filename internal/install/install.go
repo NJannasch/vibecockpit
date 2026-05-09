@@ -242,9 +242,11 @@ open "$URL"
 		return
 	}
 
-	// Strip quarantine — the bundle isn't signed, so without this it
-	// might trip Gatekeeper on first launch.
-	_ = exec.Command("xattr", "-dr", "com.apple.quarantine", appDir).Run()
+	// Clear *every* extended attribute on the bundle. com.apple.quarantine
+	// alone isn't enough — com.apple.provenance has been observed to
+	// SIGKILL the binary on first launch even after quarantine is stripped.
+	// The Go toolchain already ad-hoc signs the binary at build time.
+	_ = exec.Command("xattr", "-cr", appDir).Run()
 
 	fmt.Printf("App launcher created: %s\n", appDir)
 	fmt.Println("       Find VibeCockpit in Launchpad / Spotlight to start the web UI.")
