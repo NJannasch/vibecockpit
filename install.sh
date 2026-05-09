@@ -94,9 +94,13 @@ main() {
   download "$url" "$dest"
   chmod +x "$dest"
 
-  # Remove macOS quarantine flag (prevents Gatekeeper "malware" warning)
+  # macOS: clear every xattr the OS attached during the curl download.
+  # com.apple.quarantine alone isn't enough — com.apple.provenance has
+  # been observed to SIGKILL the binary on first launch even after
+  # quarantine is stripped. The Go toolchain already ad-hoc signs the
+  # binary at build time, so we don't need to re-sign here.
   if [ "$os" = "darwin" ]; then
-    xattr -d com.apple.quarantine "$dest" 2>/dev/null || true
+    xattr -c "$dest" 2>/dev/null || true
   fi
 
   ok "Installed ${version} to ${dest}"
