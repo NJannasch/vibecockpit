@@ -13,8 +13,11 @@ make run            # build + launch
 ## Development
 
 ```bash
-./vibecockpit --web --port 3456 &   # API backend
+./vibecockpit --web --port 3456 &   # API backend (loopback only by default)
 cd frontend && npm run dev           # Svelte with hot-reload (proxies /api to :3456)
+
+# Headless / LAN mode — requires a token
+VIBECOCKPIT_TOKEN=$(openssl rand -hex 32) ./vibecockpit --web --bind 0.0.0.0 --port 3456
 ```
 
 ## Quality
@@ -78,10 +81,12 @@ frontend/src/
 - Agent tracker with PID, elapsed time, log tailing, kill support
 
 ### MCP server (`internal/mcp/`)
-- 13+ tools: sessions, boards, costs, stats, inventory, rescan
+- 14+ tools: sessions, boards, costs, stats, inventory, rescan, search_memory, get_session_context
 - Board tools: list_boards, list_tasks, get_task, update_task, create_task
 - Inventory filtering by type and query
-- Run via `vibecockpit --mcp`
+- Two transports, same Server, same toolset:
+  - Stdio: `vibecockpit --mcp` (one process per client, JSON-RPC over stdin/stdout)
+  - HTTP: `POST /mcp` on the web server (Streamable HTTP transport; reuses `Server.HandleHTTPRequest`)
 
 ### Scan cache (`internal/web/scancache.go`)
 - Directory mtime-based invalidation

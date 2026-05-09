@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -49,6 +50,32 @@ func NewServer(providers []provider.Provider, version, workspaceDir string, cfg 
 		s.memIndexer = memory.NewIndexer(mem)
 	}
 	return s
+}
+
+// HandleHTTPRequest is the entry point for MCP-over-HTTP transport.
+// It parses one JSON-RPC request, dispatches it through the same
+// handle() the stdio path uses, and returns the JSON-encoded response
+// (with the trailing newline from writeResult/writeError stripped).
+//
+// Returns nil bytes when the request is a JSON-RPC notification (no
+// id field, or a notifications/* method) so the HTTP caller can reply
+// with 204 No Content. Always returns nil error — protocol-level
+// failures are encoded as JSON-RPC error responses.
+func (s *Server) HandleHTTPRequest(body []byte) []byte {
+	var req jsonRPCRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		var buf bytes.Buffer
+		writeError(&buf, nil, -32700, "Parse error")
+		return bytes.TrimRight(buf.Bytes(), "\n")
+	}
+	var buf bytes.Buffer
+	s.handle(&buf, &req)
+	out := bytes.TrimRight(buf.Bytes(), "\n")
+	if len(out) == 0 {
+		// notification — no response per JSON-RPC 2.0
+		return nil
+	}
+	return out
 }
 
 // Run starts the MCP server, reading JSON-RPC from stdin and writing to stdout.

@@ -27,6 +27,7 @@ import (
 	"vibecockpit/internal/costs"
 	"vibecockpit/internal/inventory"
 	"vibecockpit/internal/launcher"
+	mcpserver "vibecockpit/internal/mcp"
 	"vibecockpit/internal/memory"
 	"vibecockpit/internal/provider"
 	"vibecockpit/internal/scanner"
@@ -59,6 +60,11 @@ type server struct {
 
 	memIndex   *memory.Index   // nil if init failed; search endpoints will return empty
 	memIndexer *memory.Indexer
+
+	mcpServer *mcpserver.Server // exposes MCP-over-HTTP at /mcp; nil when MCP is disabled in config
+
+	bindAddr  string // "127.0.0.1" or whatever the user passed via --bind
+	authToken string // bearer token; required for any non-loopback request
 
 	versionMu      sync.Mutex
 	latestVersion  string
@@ -110,14 +116,34 @@ type providerInfo struct {
 	Name string `json:"name"`
 }
 
-func Start(cfg *config.Config, providers []provider.Provider, port int, version string) error {
+// StartOpts is the configuration for the web server. Bundled into a
+// struct so the call site doesn't keep growing positional args.
+type StartOpts struct {
+	Port    int
+	Bind    string // "127.0.0.1" (default), "0.0.0.0", or a specific IP
+	Token   string // bearer token; required when Bind is non-loopback
+	Version string
+}
+
+func Start(cfg *config.Config, providers []provider.Provider, opts StartOpts) error {
+	if opts.Bind == "" {
+		opts.Bind = "127.0.0.1"
+	}
+	// Refuse to expose the UI on a non-loopback address without a token.
+	// Better to fail loud at startup than to ship an unauthenticated
+	// dashboard onto a LAN.
+	if !isLoopbackBind(opts.Bind) && opts.Token == "" {
+		return fmt.Errorf("--bind=%s requires --token (or VIBECOCKPIT_TOKEN env) — refusing to expose the web UI without auth", opts.Bind)
+	}
 	isDemo := len(providers) == 1 && providers[0].Name() == "demo"
 	sched := scheduler.New(cfg)
 	s := &server{
-		cfg: cfg, providers: providers, version: version,
+		cfg: cfg, providers: providers, version: opts.Version,
 		cacheTTL:     10 * time.Second,
 		inventoryTTL: 60 * time.Second,
 		demoMode:     isDemo,
+		bindAddr:       opts.Bind,
+		authToken:      opts.Token,
 		auditLog:       audit.NewLogger(),
 		sessionCache:   newScanCache(providers),
 		scheduler:      sched,
@@ -155,6 +181,14 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 		}
 	}
 
+	// MCP-over-HTTP: when MCP is enabled in config, build a Server here
+	// and expose it at /mcp behind the auth middleware. The same Server
+	// implementation backs the stdio transport (vibecockpit --mcp), so
+	// the toolset is identical across transports.
+	if cfg.EnableMCP && !isDemo {
+		s.mcpServer = mcpserver.NewServer(providers, opts.Version, cfg.NewProjectDir, cfg, s.memIndex)
+	}
+
 	if cfg.Terminal == "default" || cfg.Terminal == "" {
 		cfg.Terminal = detectTerminal()
 		_ = cfg.Save()
@@ -182,6 +216,7 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	mux.HandleFunc("GET /api/memory/tombstones", s.handleMemoryTombstones)
 	mux.HandleFunc("POST /api/memory/untombstone", s.handleMemoryUntombstone)
 	mux.HandleFunc("GET /api/mcp-audit", s.handleMCPAudit)
+	mux.HandleFunc("POST /mcp", s.handleMCPHTTP)
 	mux.HandleFunc("GET /api/boards", s.handleGetBoards)
 	mux.HandleFunc("GET /api/boards/{name}", s.handleGetBoard)
 	mux.HandleFunc("POST /api/boards", s.handleCreateBoard)
@@ -224,16 +259,16 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	sub, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("/", spaHandler(http.FS(sub)))
 
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	addr := fmt.Sprintf("%s:%d", opts.Bind, opts.Port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		if isAddrInUse(err) {
-			killed, killErr := killStaleVibecockpit(port)
+			killed, killErr := killStaleVibecockpit(opts.Port)
 			if killErr != nil {
-				return fmt.Errorf("port %d in use and could not free it: %w", port, killErr)
+				return fmt.Errorf("port %d in use and could not free it: %w", opts.Port, killErr)
 			}
 			if killed {
-				fmt.Printf("Stopped previous vibecockpit instance on port %d\n", port)
+				fmt.Printf("Stopped previous vibecockpit instance on port %d\n", opts.Port)
 			}
 			listener, err = net.Listen("tcp", addr)
 			if err != nil {
@@ -247,10 +282,18 @@ func Start(cfg *config.Config, providers []provider.Provider, port int, version 
 	sched.Start()
 
 	fmt.Printf("VibeCockpit web UI: http://%s\n", addr)
+	if opts.Token != "" {
+		fmt.Printf("Bearer token required for non-loopback requests (set in --token / VIBECOCKPIT_TOKEN)\n")
+	}
 	fmt.Println("Press Ctrl+C to stop")
-	openBrowser(fmt.Sprintf("http://%s", addr))
+	// Only auto-open the browser when bound to loopback — on a headless
+	// server that's bound to 0.0.0.0 there is no browser to open.
+	if isLoopbackBind(opts.Bind) {
+		openBrowser(fmt.Sprintf("http://%s", addr))
+	}
 
-	return http.Serve(listener, mux)
+	handler := bearerAuthMiddleware(opts.Token, mux)
+	return http.Serve(listener, handler)
 }
 
 func isAddrInUse(err error) bool {
@@ -1151,6 +1194,31 @@ func (s *server) handleMemoryUntombstone(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"restored": id})
+}
+
+// handleMCPHTTP terminates the MCP "Streamable HTTP" transport. Each
+// POST is one JSON-RPC request; the response body is the JSON-RPC
+// response, or 204 No Content when the request is a notification.
+//
+// Tool dispatch goes through the same Server the stdio transport uses,
+// so the toolset and audit log are identical across transports.
+func (s *server) handleMCPHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.mcpServer == nil {
+		http.Error(w, "MCP is disabled — set enable_mcp: true in config.yaml", http.StatusServiceUnavailable)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	resp := s.mcpServer.HandleHTTPRequest(body)
+	if len(resp) == 0 {
+		w.WriteHeader(http.StatusNoContent) // JSON-RPC notification
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(resp)
 }
 
 func (s *server) handleMCPAudit(w http.ResponseWriter, r *http.Request) {
